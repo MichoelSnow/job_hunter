@@ -16,7 +16,6 @@ class CompanyBase(BaseModel):
     ats_type: str | None = None
     ats_id: str | None = None
     is_priority: bool = False
-    scraper_enabled: bool = False
 
 
 class CompanyCreate(CompanyBase):

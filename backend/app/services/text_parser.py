@@ -2,12 +2,46 @@
 import json
 import logging
 import re
+from datetime import date
 from pathlib import Path
 from typing import Any
+
+import yaml
 
 logger = logging.getLogger(__name__)
 
 TAXONOMY_PATH = Path(__file__).parents[4] / "config" / "skill_taxonomy.json"
+USER_PROFILE_PATH = Path(__file__).parents[4] / "config" / "user_profile.yaml"
+
+_TITLE_KEYWORD_RE = re.compile(
+    r"\b(director|vp|vice\s+president|head\s+of|chief|manager|principal|"
+    r"lead|senior|staff|data\s+scientist|analytics\s+engineer|"
+    r"data\s+engineer|machine\s+learning\s+engineer|data\s+analyst)\b",
+    re.IGNORECASE,
+)
+
+_YEAR_RANGE_RE = re.compile(
+    r"(\d{4})\s*[-–—]\s*(present|current|\d{4})",
+    re.IGNORECASE,
+)
+
+_REQUIRED_SIGNALS = [
+    "required", "must have", "must-have", "mandatory", "essential", "necessary",
+]
+_PREFERRED_SIGNALS = [
+    "preferred", "nice to have", "nice-to-have", "bonus", "a plus", "desired",
+    "ideally", "a bonus", "would be a plus",
+]
+
+
+def load_user_profile() -> dict[str, Any]:
+    """Load config/user_profile.yaml from the repo root."""
+    if not USER_PROFILE_PATH.exists():
+        logger.warning("user_profile.yaml not found at %s", USER_PROFILE_PATH)
+        return {}
+    with USER_PROFILE_PATH.open(encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+    return data
 
 
 class ResumeParser:
@@ -54,12 +88,71 @@ class ResumeParser:
         return found
 
     def _estimate_experience_years(self, text: str) -> int | None:
-        # TODO: parse date ranges from work history sections
-        return None
+        """Estimate total years of experience by summing year ranges found in text."""
+        current_year = date.today().year
+        total_months = 0
+
+        for match in _YEAR_RANGE_RE.finditer(text):
+            start_year = int(match.group(1))
+            end_raw = match.group(2).lower()
+            end_year = current_year if end_raw in ("present", "current") else int(end_raw)
+
+            if 1970 <= start_year <= current_year and start_year <= end_year <= current_year + 1:
+                total_months += (end_year - start_year) * 12
+
+        if total_months == 0:
+            return None
+        return max(1, round(total_months / 12))
 
     def _extract_titles(self, text: str) -> list[str]:
-        # TODO: NER with spaCy
-        return []
+        """Extract job titles using spaCy Matcher, falling back to regex."""
+        try:
+            return self._extract_titles_spacy(text)
+        except Exception:
+            logger.debug("spaCy title extraction failed, using regex fallback", exc_info=True)
+            return self._extract_titles_regex(text)
+
+    def _extract_titles_spacy(self, text: str) -> list[str]:
+        import spacy
+        from spacy.matcher import Matcher
+
+        nlp = spacy.load("en_core_web_sm")
+        matcher = Matcher(nlp.vocab)
+
+        title_keywords = [
+            "director", "vp", "head", "chief", "manager",
+            "principal", "lead", "president",
+        ]
+        matcher.add("TITLE_KW", [[{"LOWER": kw}] for kw in title_keywords])
+        matcher.add("VICE_PRES", [[{"LOWER": "vice"}, {"LOWER": "president"}]])
+
+        doc = nlp(text[:8000])  # cap for performance
+        matches = matcher(doc)
+
+        titles: list[str] = []
+        seen: set[str] = set()
+        for _, start, end in matches:
+            # Expand window by a few tokens to capture "Director of Data"
+            tok_start = max(0, start - 1)
+            tok_end = min(len(doc), end + 4)
+            span_text = doc[tok_start:tok_end].text.strip()
+            lower = span_text.lower()
+            if 5 < len(span_text) < 80 and lower not in seen:
+                seen.add(lower)
+                titles.append(span_text)
+        return titles
+
+    def _extract_titles_regex(self, text: str) -> list[str]:
+        titles: list[str] = []
+        seen: set[str] = set()
+        for line in text.splitlines():
+            stripped = line.strip()
+            if _TITLE_KEYWORD_RE.search(stripped) and 5 <= len(stripped) <= 100:
+                lower = stripped.lower()
+                if lower not in seen:
+                    seen.add(lower)
+                    titles.append(stripped)
+        return titles[:10]
 
 
 class JobDescriptionParser:
@@ -72,8 +165,18 @@ class JobDescriptionParser:
         preferred: list[str] = []
 
         for skill in taxonomy:
-            if re.search(rf"\b{re.escape(skill.lower())}\b", text_lower):
-                # Heuristic: skills near "required" → required, near "preferred" → preferred
+            pattern = rf"\b{re.escape(skill.lower())}\b"
+            match = re.search(pattern, text_lower)
+            if match is None:
+                continue
+            # Examine a window of 300 chars around the skill mention for context signals
+            start = max(0, match.start() - 300)
+            end = min(len(text_lower), match.end() + 300)
+            context = text_lower[start:end]
+
+            if any(sig in context for sig in _PREFERRED_SIGNALS):
+                preferred.append(skill)
+            else:
                 required.append(skill)
 
         return {

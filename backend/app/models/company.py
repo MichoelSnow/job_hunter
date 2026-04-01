@@ -28,7 +28,6 @@ class Company(Base):
     ats_type: Mapped[str | None] = mapped_column(String(50))  # 'greenhouse', 'lever', 'custom'
     ats_id: Mapped[str | None] = mapped_column(String(255))
     is_priority: Mapped[bool] = mapped_column(Boolean, default=False)
-    scraper_enabled: Mapped[bool] = mapped_column(Boolean, default=False)
     last_scraped_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

@@ -32,6 +32,11 @@ def on_startup() -> None:
     logger.info("Starting up — creating tables if needed")
     create_tables()
 
+    from app.services.text_parser import load_user_profile
+
+    app.state.user_profile = load_user_profile()
+    logger.info("Loaded user profile for %s", app.state.user_profile.get("user", {}).get("name", "unknown"))
+
 
 from app.api import analytics, applications, companies, criteria, jobs  # noqa: E402
 

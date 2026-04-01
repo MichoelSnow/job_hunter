@@ -33,45 +33,46 @@ Tracks build progress phase by phase. Items marked `[x]` are complete; `[~]` mea
   - [x] `Application` + `ApplicationStatusHistory`
   - [x] `UserCriteria`
   - [x] `JobSearchQuery` + `ApiUsageTracking`
-- [ ] Implement job storage / upsert logic
-  - [ ] Save normalized jobs to database
-  - [ ] Upsert on `external_id` (update if exists, insert if new)
-  - [ ] Resolve and upsert `Company` rows from job data
-  - [ ] Record `JobSearchQuery` row per run
+- [x] Implement job storage / upsert logic (`job_store.py`)
+  - [x] Upsert `Company` by name; update logo_url if missing
+  - [x] Upsert `Job` by `external_id` (insert if new, update mutable fields if exists)
+  - [x] `bulk_upsert_jobs()` resolves company FK and commits in one transaction
+  - [x] `record_api_usage()` increments daily request count per source
+  - [x] Unit tests for all store functions
 - [x] Implement job filter module (`job_filter.py`)
   - [x] Location filter (Manhattan / Brooklyn keywords)
   - [x] Work arrangement filter (reject fully remote)
   - [x] Role level filter (director / VP / head / chief / lead)
   - [x] Unit tests for all three filters
-- [ ] Wire `run_job_discovery()` end-to-end
-  - [ ] fetch → filter → upsert pipeline
-  - [ ] Track API usage in `api_usage_tracking` table
+- [x] Wire `run_job_discovery()` end-to-end
+  - [x] fetch (APIs + scrapers) → filter → upsert pipeline
+  - [x] Track API usage in `api_usage_tracking` table
 - [ ] Smoke test: trigger `/api/jobs/refresh` and verify jobs appear in DB
 
 ---
 
 ## Phase 2: Resume Parsing & Scoring
 
-- [~] Implement resume parser (`text_parser.py`)
+- [x] Implement resume parser (`text_parser.py`)
   - [x] `.md` / `.txt` file reading
   - [x] `.docx` file reading
   - [x] `.pdf` file reading
   - [x] Skill extraction via taxonomy keyword matching
-  - [ ] Experience years estimation (date range parsing)
-  - [ ] Job title extraction (spaCy NER)
-- [~] Implement job description parser
+  - [x] Experience years estimation (date range parsing)
+  - [x] Job title extraction (spaCy NER via `Matcher`, regex fallback)
+- [x] Implement job description parser
   - [x] Skill extraction via taxonomy keyword matching
-  - [ ] Required vs preferred skill classification
-  - [ ] Store parsed requirements in `job_requirements` table
-- [~] Implement scoring engine (`scoring_engine.py`)
+  - [x] Required vs preferred skill classification (context window heuristic)
+  - [x] Store parsed requirements in `job_requirements` table (`store_job_requirements`, `parse_and_store_requirements`)
+- [x] Implement scoring engine (`scoring_engine.py`)
   - [x] Weight injection from `Settings` at construction
-  - [x] `user_to_job` skill overlap scoring (TF-IDF / keyword)
-  - [ ] Experience match dimension
-  - [ ] Title/level match dimension
-  - [ ] `job_to_user` soft criteria scoring (industry, salary)
-  - [ ] Unit tests for scoring logic
-- [ ] Load `user_profile.yaml` at startup and pass to `ScoringEngine`
-- [ ] Batch score all jobs after discovery run
+  - [x] `user_to_job` skill overlap scoring (keyword)
+  - [x] Experience match dimension
+  - [x] Title/level match dimension
+  - [x] `job_to_user` soft criteria scoring (industry, salary)
+  - [x] Unit tests for scoring logic (`test_scoring_engine.py` — 17 tests)
+- [x] Load `user_profile.yaml` at startup and pass to `ScoringEngine`
+- [x] Batch score all jobs after discovery run
 
 ---
 
@@ -142,7 +143,7 @@ Tracks build progress phase by phase. Items marked `[x]` are complete; `[~]` mea
   - [ ] Per-company CSS selector config
 - [x] `companies.json` seed list with `ats_type` + `ats_id` for all priority companies
 - [x] Scraper dispatcher (`get_scraper()` in `scraper/__init__.py`)
-- [ ] Wire company scrapers into `run_job_discovery()`
+- [x] Wire company scrapers into `run_job_discovery()`
 - [ ] Verify Greenhouse and Lever scrapers return results for at least 3 companies
 - [ ] Company management UI (Settings page)
 

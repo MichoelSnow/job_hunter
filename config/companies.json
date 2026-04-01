@@ -103,6 +103,30 @@
       "ats_id": null,
       "careers_url": "https://careers.nychh.org",
       "is_priority": false
+    },
+    {
+      "name": "Maimonides Medical Center",
+      "industry": "healthcare",
+      "ats_type": "custom",
+      "ats_id": null,
+      "careers_url": "https://careers.maimo.org/",
+      "is_priority": false
+    },
+    {
+      "name": "New York Presbyterian",
+      "industry": "healthcare",
+      "ats_type": "custom",
+      "ats_id": null,
+      "careers_url": "https://careers.nyp.org/",
+      "is_priority": false
+    },
+    {
+      "name": "Northwell",
+      "industry": "healthcare",
+      "ats_type": "custom",
+      "ats_id": null,
+      "careers_url": "https://jobs.northwell.edu/",
+      "is_priority": false
     }
   ]
 }
