@@ -5,29 +5,45 @@ Personal job search aggregation and tracking tool. Discovers data leadership rol
 ## Setup
 
 ### Prerequisites
-- Python 3.13+
+- Python 3.13 (via pyenv or system install — **not 3.14**, several ML deps don't support it yet)
 - Poetry (`pip install poetry`)
 - Node.js 20+ and pnpm (`npm install -g pnpm`)
 
-### 1. Clone and configure
+### 1. Configure environment
 
 ```bash
 cp .env.example .env
-# Add your RAPIDAPI_KEY to .env
 ```
+
+Edit `.env` and fill in your API keys:
+- `JSEARCHAPI_KEY` — from [openwebninja.com](https://www.openwebninja.com/api/jsearch/docs)
+- `SERPLYAPI_KEY` — from [serply.io](https://serply.io)
 
 Edit `config/user_profile.yaml` with your name, resume path, and skills.
 
-### 2. Backend
+### 2. Create the data directory
+
+```bash
+mkdir -p data
+```
+
+Place your resume in `data/` (`.md`, `.docx`, or `.pdf` supported) and update `resume_file_path` in `config/user_profile.yaml` accordingly.
+
+### 3. Install backend dependencies
 
 ```bash
 poetry install
-poetry run uvicorn backend.main:app --reload
+```
+
+### 4. Start the backend
+
+```bash
+poetry run uvicorn main:app --reload --app-dir backend
 ```
 
 API runs at http://localhost:8000. Swagger docs at http://localhost:8000/docs.
 
-### 3. Frontend
+### 5. Install and start the frontend
 
 ```bash
 cd frontend
@@ -37,15 +53,17 @@ pnpm dev
 
 UI runs at http://localhost:5173.
 
+---
+
 ## Development Commands
 
-All backend commands run from the **repo root**.
+All commands run from the **repo root** unless noted.
 
 ### Backend
 
 | Command | Description |
 |---|---|
-| `poetry run uvicorn backend.main:app --reload` | Start dev server |
+| `poetry run uvicorn main:app --reload --app-dir backend` | Start dev server |
 | `poetry run pytest` | Run all tests |
 | `poetry run pytest backend/tests/unit/` | Unit tests only |
 | `poetry run ruff check .` | Lint |
@@ -59,6 +77,8 @@ All backend commands run from the **repo root**.
 | `pnpm build` | Production build |
 | `pnpm lint` | Lint |
 | `pnpm format` | Format |
+
+---
 
 ## Project Structure
 
