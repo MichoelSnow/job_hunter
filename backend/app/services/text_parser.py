@@ -19,6 +19,8 @@ class ResumeParser:
             text = self._read_docx(path)
         elif path.suffix == ".pdf":
             text = self._read_pdf(path)
+        elif path.suffix in (".md", ".txt"):
+            text = path.read_text(encoding="utf-8")
         else:
             raise ValueError(f"Unsupported resume format: {path.suffix}")
         return self.parse_text(text)

@@ -4,7 +4,7 @@
 
 user:
   name: "Your Name"
-  resume_file_path: "data/resume.docx"  # relative to repo root
+  resume_file_path: "data/resume.md"  # relative to repo root
 
 experience_years: 10
 current_title: "Director of Data"
