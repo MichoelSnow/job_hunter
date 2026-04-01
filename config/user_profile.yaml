@@ -1,0 +1,50 @@
+# User profile — edit this file before first use.
+# Loaded at startup by text_parser and scoring_engine.
+# This file is not sensitive but is personal — do not commit if you prefer.
+
+user:
+  name: "Your Name"
+  resume_file_path: "data/resume.docx"  # relative to repo root
+
+experience_years: 10
+current_title: "Director of Data"
+
+skills:
+  technical:
+    - name: "Python"
+      category: "data_engineering"
+      proficiency: "expert"
+    - name: "SQL"
+      category: "data_engineering"
+      proficiency: "expert"
+    - name: "Spark"
+      category: "data_engineering"
+      proficiency: "advanced"
+    - name: "Airflow"
+      category: "data_engineering"
+      proficiency: "advanced"
+    - name: "Snowflake"
+      category: "data_platforms"
+      proficiency: "advanced"
+    - name: "dbt"
+      category: "data_engineering"
+      proficiency: "advanced"
+    - name: "Tableau"
+      category: "visualization"
+      proficiency: "intermediate"
+    - name: "machine learning"
+      category: "data_science"
+      proficiency: "intermediate"
+
+  leadership:
+    - "team management"
+    - "stakeholder management"
+    - "roadmap planning"
+    - "cross-functional collaboration"
+    - "hiring"
+
+  domain:
+    - "healthcare analytics"
+    - "HIPAA"
+    - "EHR"
+    - "clinical data"

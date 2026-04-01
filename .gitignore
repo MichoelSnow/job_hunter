@@ -1,0 +1,63 @@
+# .gitignore
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+
+# Python distribution / packaging
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# SQLite database
+data/*.db
+data/*.db-shm
+data/*.db-wal
+
+# Poetry
+backend/poetry.lock
+
+# ruff / pytest cache
+.ruff_cache/
+.pytest_cache/
+
+# pnpm
+pnpm-lock.yaml
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+
+# VS Code
+.vscode/
+
+# Environment files
+.env
+.env.*
+
+# Node modules
+node_modules/
+
+# Frontend build
+frontend/dist/
+frontend/.vite/
+
+# data
+data/
+
+# Production
+frontend/build/
+
+# Scratch
+cursor_plans.MD
+.tmp/
+
+# Backup / temp editor artifacts
+*.bak
+*.tmp
+*.orig

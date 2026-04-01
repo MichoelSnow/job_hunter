@@ -1,0 +1,49 @@
+{
+  "technical_skills": {
+    "data_engineering": [
+      "SQL", "Python", "Spark", "Airflow", "ETL", "data pipelines",
+      "dbt", "Kafka", "Flink", "Luigi", "Prefect", "Dagster"
+    ],
+    "data_science": [
+      "machine learning", "statistics", "Python", "R", "TensorFlow",
+      "PyTorch", "scikit-learn", "deep learning", "NLP", "LLM"
+    ],
+    "data_platforms": [
+      "Snowflake", "Redshift", "BigQuery", "Databricks", "Delta Lake",
+      "dbt", "Fivetran", "Stitch", "Airbyte"
+    ],
+    "visualization": [
+      "Tableau", "Looker", "Power BI", "Metabase", "Superset", "Mode"
+    ],
+    "cloud": [
+      "AWS", "GCP", "Azure", "S3", "EC2", "Lambda", "Cloud Run"
+    ],
+    "databases": [
+      "PostgreSQL", "MySQL", "MongoDB", "Redis", "Elasticsearch",
+      "DynamoDB", "Cassandra"
+    ]
+  },
+  "leadership_skills": [
+    "team management",
+    "stakeholder management",
+    "strategy",
+    "roadmap planning",
+    "cross-functional collaboration",
+    "hiring",
+    "mentorship",
+    "executive communication",
+    "OKRs",
+    "budget management"
+  ],
+  "domain_skills": {
+    "healthcare": [
+      "HIPAA", "HL7", "FHIR", "EHR", "EMR", "clinical data",
+      "healthcare analytics", "population health", "claims data",
+      "ICD-10", "CPT codes", "interoperability"
+    ],
+    "healthtech": [
+      "digital health", "telehealth", "health tech", "medical devices",
+      "wearables", "remote patient monitoring", "value-based care"
+    ]
+  }
+}

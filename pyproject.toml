@@ -1,0 +1,49 @@
+[tool.poetry]
+name = "job-search"
+version = "0.1.0"
+description = "Personal job search aggregation and tracking tool"
+authors = []
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.13"
+fastapi = "*"
+uvicorn = {extras = ["standard"], version = "*"}
+sqlalchemy = "*"
+pydantic = "*"
+pydantic-settings = "*"
+requests = "*"
+tenacity = "*"
+beautifulsoup4 = "*"
+lxml = "*"
+scikit-learn = "*"
+numpy = "*"
+pandas = "*"
+spacy = "*"
+sentence-transformers = "*"
+python-multipart = "*"
+python-docx = "*"
+pypdf = "*"
+pyyaml = "*"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "*"
+pytest-asyncio = "*"
+httpx = "*"
+ruff = "*"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+pythonpath = ["backend"]
+asyncio_mode = "auto"

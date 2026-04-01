@@ -1,0 +1,108 @@
+{
+  "companies": [
+    {
+      "name": "Oscar Health",
+      "industry": "healthtech",
+      "ats_type": "greenhouse",
+      "ats_id": "oscar",
+      "careers_url": "https://www.hioscar.com/careers",
+      "is_priority": true
+    },
+    {
+      "name": "Flatiron Health",
+      "industry": "healthtech",
+      "ats_type": "greenhouse",
+      "ats_id": "flatiron",
+      "careers_url": "https://flatiron.com/careers",
+      "is_priority": true
+    },
+    {
+      "name": "Cityblock Health",
+      "industry": "healthtech",
+      "ats_type": "greenhouse",
+      "ats_id": "cityblock",
+      "careers_url": "https://www.cityblock.com/careers",
+      "is_priority": true
+    },
+    {
+      "name": "Spring Health",
+      "industry": "healthtech",
+      "ats_type": "greenhouse",
+      "ats_id": "springhealth",
+      "careers_url": "https://www.springhealth.com/careers",
+      "is_priority": true
+    },
+    {
+      "name": "Datavant",
+      "industry": "healthtech",
+      "ats_type": "greenhouse",
+      "ats_id": "datavant",
+      "careers_url": "https://datavant.com/careers",
+      "is_priority": true
+    },
+    {
+      "name": "Quartet Health",
+      "industry": "healthtech",
+      "ats_type": "greenhouse",
+      "ats_id": "quartethealth",
+      "careers_url": "https://www.quartethealth.com/careers",
+      "is_priority": false
+    },
+    {
+      "name": "Tempus",
+      "industry": "healthtech",
+      "ats_type": "greenhouse",
+      "ats_id": "tempus",
+      "careers_url": "https://www.tempus.com/careers/",
+      "is_priority": true
+    },
+    {
+      "name": "Nuvation Bio",
+      "industry": "healthtech",
+      "ats_type": "greenhouse",
+      "ats_id": "nuvationbio",
+      "careers_url": "https://nuvationbio.com/careers",
+      "is_priority": false
+    },
+    {
+      "name": "Ro",
+      "industry": "healthtech",
+      "ats_type": "lever",
+      "ats_id": "ro",
+      "careers_url": "https://ro.co/careers",
+      "is_priority": true
+    },
+    {
+      "name": "Calibrate",
+      "industry": "healthtech",
+      "ats_type": "lever",
+      "ats_id": "calibrate",
+      "careers_url": "https://www.joincalibrate.com/careers",
+      "is_priority": false
+    },
+    {
+      "name": "Alma",
+      "industry": "healthtech",
+      "ats_type": "lever",
+      "ats_id": "withalma",
+      "careers_url": "https://helloalma.com/careers",
+      "is_priority": false
+    },
+    {
+      "name": "Mount Sinai Health System",
+      "industry": "healthcare",
+      "ats_type": "custom",
+      "ats_id": null,
+      "careers_url": "https://www.mountsinai.org/about/careers",
+      "is_priority": false
+    },
+    {
+      "name": "NYC Health + Hospitals",
+      "industry": "healthcare",
+      "ats_type": "custom",
+      "ats_id": null,
+      "careers_url": "https://careers.nychh.org",
+      "is_priority": false
+    }
+  ]
+}
