@@ -138,13 +138,32 @@ Tracks build progress phase by phase. Items marked `[x]` are complete; `[~]` mea
 
 - [x] Greenhouse boards JSON API scraper (`greenhouse.py`)
 - [x] Lever postings JSON API scraper (`lever.py`)
+- [x] Workday scraper (`workday.py`) — paginated POST API, tenant/board/instance from `companies.json`
 - [x] HTML fallback scraper base (`html_scraper.py`)
-  - [ ] Per-company CSS selector config
+  - [x] Per-company CSS selector config (via `html_selectors` key in `companies.json`)
 - [x] `companies.json` seed list with `ats_type` + `ats_id` for all priority companies
 - [x] Scraper dispatcher (`get_scraper()` in `scraper/__init__.py`)
 - [x] Wire company scrapers into `run_job_discovery()`
-- [ ] Verify Greenhouse and Lever scrapers return results for at least 3 companies
-- [ ] Company management UI (Settings page)
+- [x] Verified Greenhouse returns results: Oscar (280 jobs), Flatiron (11), Zocdoc (76), Maven Clinic (20), Komodo Health (38)
+- [x] Verified Lever returns results: Ro (47 jobs), Alma (2 jobs)
+- [x] Verified Workday returns results: Tempus (112 jobs)
+- [x] Company management UI (Settings page — Phase 4)
+
+### Companies requiring manual ATS verification
+
+The following companies in `companies.json` are marked `ats_type: custom` with `ats_id: null` and will be skipped by scrapers until fixed. To fix: open the careers page in a browser, open DevTools → Network tab, filter for `XHR/Fetch`, and identify the ATS API call. For Workday companies, record the full POST URL and add `ats_type: workday`, `ats_id`, `workday_board`, and `workday_instance` to the company entry.
+
+| Company | Suspected ATS | How to fix |
+|---|---|---|
+| Spring Health | Unknown (JS-rendered) | Inspect https://www.springhealth.com/careers in browser DevTools |
+| Datavant | Unknown (JS-rendered) | Inspect https://datavant.com/careers in browser DevTools |
+| Quartet Health | Unknown | Careers page returns 404 — company may have been acquired; verify still exists |
+| Nuvation Bio | Unknown (JS-rendered) | Inspect https://nuvationbio.com/careers in browser DevTools |
+| Mount Sinai | Likely Workday/Taleo | Inspect https://www.mountsinai.org/about/careers in browser DevTools |
+| NYC Health + Hospitals | Likely Taleo/iCIMS | Inspect https://careers.nychh.org in browser DevTools |
+| Maimonides | Unknown | Inspect https://careers.maimo.org/ in browser DevTools |
+| New York Presbyterian | Likely Workday/Taleo | Inspect https://careers.nyp.org/ in browser DevTools |
+| Northwell | Likely Workday/Taleo | Inspect https://jobs.northwell.edu/ in browser DevTools |
 
 ---
 

@@ -33,4 +33,18 @@
  - Never hardcode secrets in commands. Always reference values from environment variables (loaded via `set -a; source .env; set +a`).
 
 ## MCPs
-  - Only use the Context7 MCP when I explicitly ask for it 
+  - Only use the Context7 MCP when I explicitly ask for it
+
+## Research before acting
+
+- Before writing code or running commands that interact with an external API or service,
+  read its documentation first. If official docs are not available, say so and ask the
+  user how to proceed — do not probe with speculative requests.
+- Never guess API endpoints, request shapes, or authentication by trial and error.
+  Each failed attempt wastes time and context. One well-read doc beats ten curl attempts.
+- If a task requires inspecting a JS-rendered page or a browser session (e.g. DevTools
+  Network tab), say so immediately and ask the user to gather that information. Do not
+  attempt to replicate browser behavior with curl.
+- Limit external verification commands to what can succeed in ≤ 3 attempts with a clear
+  hypothesis for each. If the third attempt fails, stop and report what is unknown rather
+  than continuing to guess.

@@ -1,0 +1,101 @@
+"""Scraper for companies using the Workday ATS (internal JSON API).
+
+Workday exposes a consistent POST endpoint across all tenants:
+  https://{tenant}.wd{n}.myworkdayjobs.com/wday/cxs/{tenant}/{board}/jobs
+
+The tenant name, WD instance number (wd1, wd5, etc.), and board name are found
+by inspecting the Network tab in browser DevTools on the company's careers page.
+
+Company config shape (in companies.json):
+  {
+    "ats_type": "workday",
+    "ats_id": "{tenant}",
+    "workday_board": "{board}",
+    "workday_instance": "wd5"   // defaults to "wd1" if omitted
+  }
+"""
+import logging
+from datetime import date
+from typing import Any
+
+from app.services.scraper.base import BaseJobScraper
+
+logger = logging.getLogger(__name__)
+
+_PAGE_SIZE = 100
+
+
+class WorkdayScraper(BaseJobScraper):
+    """
+    Fetches all job postings via the Workday internal jobs API.
+    Paginates automatically until all results are retrieved.
+    """
+
+    def _fetch_raw(self) -> list[dict[str, Any]]:
+        tenant = self.company.get("ats_id", "")
+        board = self.company.get("workday_board", "")
+        instance = self.company.get("workday_instance", "wd1")
+
+        if not tenant or not board:
+            logger.warning(
+                "WorkdayScraper: missing ats_id or workday_board for %s — skipping",
+                self.company.get("name"),
+            )
+            return []
+
+        url = f"https://{tenant}.{instance}.myworkdayjobs.com/wday/cxs/{tenant}/{board}/jobs"
+        all_jobs: list[dict[str, Any]] = []
+        offset = 0
+
+        while True:
+            payload = {
+                "limit": _PAGE_SIZE,
+                "offset": offset,
+                "searchText": "",
+                "appliedFacets": {},
+            }
+            response = self.session.post(url, json=payload, timeout=15)
+            response.raise_for_status()
+            data = response.json()
+
+            page = data.get("jobPostings", [])
+            all_jobs.extend(page)
+
+            total = data.get("total", 0)
+            offset += len(page)
+            if offset >= total or not page:
+                break
+
+        return all_jobs
+
+    def normalize(self, raw: dict[str, Any]) -> dict[str, Any]:
+        tenant = self.company.get("ats_id", "")
+        board = self.company.get("workday_board", "")
+        instance = self.company.get("workday_instance", "wd1")
+        external_path = raw.get("externalPath", "")
+
+        apply_url = (
+            f"https://{tenant}.{instance}.myworkdayjobs.com/{board}{external_path}"
+            if external_path
+            else ""
+        )
+
+        # bulletFields[0] is the job requisition ID when present
+        bullet_fields = raw.get("bulletFields") or []
+        req_id = bullet_fields[0] if bullet_fields else ""
+        external_id = f"wd_{tenant}_{req_id}" if req_id else f"wd_{tenant}_{external_path.split('_')[-1]}"
+
+        return {
+            "external_id": external_id,
+            "title": raw.get("title", ""),
+            "description": "",
+            "location": raw.get("locationsText", ""),
+            "work_arrangement": "unknown",
+            "application_url": apply_url,
+            "source": "workday",
+            "source_url": apply_url,
+            "posted_date": None,
+            "discovered_date": date.today().isoformat(),
+            "company_name": self.company.get("name"),
+            "raw_data": raw,
+        }
