@@ -27,11 +27,11 @@ class GreenhouseScraper(BaseJobScraper):
         location = raw.get("location", {})
         return {
             "external_id": f"gh_{raw.get('id')}",
-            "title": raw.get("title", ""),
+            "title": raw.get("title") or "",
             "description": "",  # full description requires a separate API call per job
             "location": location.get("name") if isinstance(location, dict) else str(location),
             "work_arrangement": "unknown",
-            "application_url": raw.get("absolute_url", ""),
+            "application_url": raw.get("absolute_url") or "",
             "source": "greenhouse",
             "source_url": raw.get("absolute_url"),
             "posted_date": _parse_date(raw.get("updated_at")),

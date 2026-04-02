@@ -27,7 +27,7 @@ class LeverScraper(BaseJobScraper):
         categories = raw.get("categories", {})
         return {
             "external_id": f"lv_{raw.get('id')}",
-            "title": raw.get("text", ""),
+            "title": raw.get("text") or "",
             "description": raw.get("descriptionPlain") or "",
             "location": categories.get("location", ""),
             "work_arrangement": "unknown",

@@ -87,8 +87,8 @@
     {
       "name": "Alma",
       "industry": "healthtech",
-      "ats_type": "lever",
-      "ats_id": "withalma",
+      "ats_type": "greenhouse",
+      "ats_id": "alma",
       "careers_url": "https://helloalma.com/careers",
       "is_priority": false
     },

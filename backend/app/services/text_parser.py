@@ -10,8 +10,8 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-TAXONOMY_PATH = Path(__file__).parents[4] / "config" / "skill_taxonomy.json"
-USER_PROFILE_PATH = Path(__file__).parents[4] / "config" / "user_profile.yaml"
+TAXONOMY_PATH = Path(__file__).parents[3] / "config" / "skill_taxonomy.json"
+USER_PROFILE_PATH = Path(__file__).parents[3] / "config" / "user_profile.yaml"
 
 _TITLE_KEYWORD_RE = re.compile(
     r"\b(director|vp|vice\s+president|head\s+of|chief|manager|principal|"
@@ -186,11 +186,18 @@ class JobDescriptionParser:
         }
 
 
+_taxonomy_cache: list[str] | None = None
+
+
 def _load_taxonomy() -> list[str]:
-    """Flatten all skills from the taxonomy JSON into a single list."""
+    """Flatten all skills from the taxonomy JSON into a single list. Result is cached."""
+    global _taxonomy_cache
+    if _taxonomy_cache is not None:
+        return _taxonomy_cache
     if not TAXONOMY_PATH.exists():
         logger.warning("Skill taxonomy not found at %s", TAXONOMY_PATH)
-        return []
+        _taxonomy_cache = []
+        return _taxonomy_cache
     with TAXONOMY_PATH.open() as f:
         data = json.load(f)
     skills: list[str] = []
@@ -201,7 +208,8 @@ def _load_taxonomy() -> list[str]:
             for subcategory in category.values():
                 if isinstance(subcategory, list):
                     skills.extend(subcategory)
-    return list(set(skills))
+    _taxonomy_cache = list(set(skills))
+    return _taxonomy_cache
 
 
 def _extract_years_required(text: str) -> int | None:

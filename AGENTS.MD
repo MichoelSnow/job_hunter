@@ -24,7 +24,9 @@
  - Keep tests deterministic; seed randomness and avoid network calls
  - Add lightweight smoke tests for new workflows or CLI paths
  - If tests are skipped, state why and provide a manual verification step
- - Use pytest by default for Python; keep tests fast and isolated 
+ - Use pytest by default for Python; keep tests fast and isolated
+ - ALWAYS run pytest as `.venv/bin/python -m pytest` from the `backend/` directory. Never use `poetry run pytest`, `python -m pytest`, or any other invocation — they will fail due to the poetry/pyenv version mismatch in this project.
+ - Tests that make real external API calls must be marked `@pytest.mark.live`. The default pytest run excludes `live` tests (`-m 'not live'` is set in pyproject.toml). To run live tests explicitly: `.venv/bin/python -m pytest -m live -v -s`
 
 ## Command hygiene
  - Run shell commands with a 10-second timeout by default.

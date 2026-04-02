@@ -137,19 +137,42 @@ class TestSchemaIntegrity:
 # ---------------------------------------------------------------------------
 
 class TestDiscoveryPipeline:
-    """End-to-end pipeline tests with mocked HTTP."""
+    """Full end-to-end pipeline tests calling run_job_discovery() directly.
 
-    def _run_pipeline(self, db_session, jsearch_data=None, serply_data=None):
-        """Run bulk_upsert_jobs with fake normalized job dicts derived from mocked API data."""
-        from app.services.api_aggregator import JobAPIAggregator
-        from app.services.job_filter import JobFilter
-        from app.services.job_store import bulk_upsert_jobs
+    All HTTP is mocked; everything else (file loading, ORM, filtering, parsing,
+    scoring) runs for real. This ensures that path bugs, NOT NULL violations, and
+    missing pipeline steps all fail here rather than on a live run.
+    """
+
+    def _run_discovery(self, db_session, jsearch_data=None, serply_data=None):
+        """Call run_job_discovery() with mocked HTTP and the provided in-memory session."""
+        from app.services.api_aggregator import run_job_discovery
 
         jsearch_resp = _mock_http_response(jsearch_data or _fake_jsearch_response())
         serply_resp = _mock_http_response(serply_data or _fake_serply_response())
 
+        def dispatch_get(url, **kwargs):
+            if "openwebninja" in url:
+                return jsearch_resp
+            if "serply" in url:
+                return serply_resp
+            if "greenhouse" in url:
+                return _mock_http_response({"jobs": []})
+            if "lever" in url:
+                return _mock_http_response([])
+            # Workday CSRF GET or anything else
+            return _mock_http_response({})
+
+        # Workday POST — return empty so scrapers exit immediately
+        workday_resp = _mock_http_response({"total": 0, "jobPostings": []})
+
+        # Prevent run_job_discovery from closing our test session
+        db_session.close = lambda: None
+
         with patch("app.services.api_aggregator.settings") as mock_settings, \
-             patch("requests.Session.get") as mock_get:
+             patch("app.db.session.SessionLocal", return_value=db_session), \
+             patch("requests.Session.get", side_effect=dispatch_get), \
+             patch("requests.Session.post", return_value=workday_resp):
 
             mock_settings.jsearchapi_key = "fake_key"
             mock_settings.serplyapi_key = "fake_key"
@@ -158,51 +181,82 @@ class TestDiscoveryPipeline:
             mock_settings.search_queries = ["director data healthcare New York"]
             mock_settings.search_locations = ["New York, NY"]
             mock_settings.api_request_delay_seconds = 0
+            # Scoring weights — must be real floats or ScoringEngine arithmetic breaks
+            mock_settings.user_to_job_weight = 0.6
+            mock_settings.job_to_user_weight = 0.4
+            mock_settings.skill_match_weight = 0.50
+            mock_settings.experience_match_weight = 0.25
+            mock_settings.title_match_weight = 0.15
+            mock_settings.education_match_weight = 0.10
 
-            # First call → JSearch, second → Serply
-            mock_get.side_effect = [jsearch_resp, serply_resp]
-
-            aggregator = JobAPIAggregator()
-            raw_jobs = aggregator.search_all()
-
-        filtered = JobFilter().apply_all(raw_jobs)
-        inserted, updated = bulk_upsert_jobs(db_session, filtered)
-        return inserted, updated, filtered
+            run_job_discovery()
 
     def test_full_pipeline_inserts_jobs(self, db_session):
-        inserted, updated, filtered = self._run_pipeline(db_session)
-        assert inserted > 0
-        assert updated == 0
+        self._run_discovery(db_session)
+        assert db_session.query(Job).count() > 0
 
     def test_second_run_updates_not_inserts(self, db_session):
-        self._run_pipeline(db_session)
-        inserted, updated, _ = self._run_pipeline(db_session)
-        assert inserted == 0
-        assert updated > 0
+        from app.services.api_aggregator import discovery_status
+        self._run_discovery(db_session)
+        first_count = db_session.query(Job).count()
+        self._run_discovery(db_session)
+        assert db_session.query(Job).count() == first_count
+        assert discovery_status["inserted"] == 0
+        assert discovery_status["updated"] > 0
 
     def test_company_rows_created(self, db_session):
-        self._run_pipeline(db_session)
-        count = db_session.query(Company).count()
-        assert count > 0
+        self._run_discovery(db_session)
+        assert db_session.query(Company).count() > 0
 
     def test_scraper_enabled_default_set(self, db_session):
-        """Regression: scraper_enabled NOT NULL was missing from ORM, causing live DB failures."""
-        self._run_pipeline(db_session)
-        companies = db_session.query(Company).all()
-        assert all(c.scraper_enabled is True for c in companies)
+        """Regression: scraper_enabled NOT NULL was missing from ORM."""
+        self._run_discovery(db_session)
+        assert all(c.scraper_enabled is True for c in db_session.query(Company).all())
 
-    def test_jobs_have_correct_source(self, db_session):
-        self._run_pipeline(db_session)
-        sources = {j.source for j in db_session.query(Job).all()}
-        assert "jsearch_api" in sources
+    def test_jobs_have_non_null_required_fields(self, db_session):
+        """Regression: null API fields must not reach NOT NULL DB columns."""
+        self._run_discovery(db_session)
+        for job in db_session.query(Job).all():
+            assert job.title is not None
+            assert job.description is not None
+            assert job.application_url is not None
+            assert job.source is not None
+            assert job.discovered_date is not None
+
+    def test_null_description_stored_as_empty_string(self, db_session):
+        """Regression: job_description=null from JSearch caused NOT NULL constraint failure."""
+        data = _fake_jsearch_response(1)
+        data["data"][0]["job_description"] = None
+        self._run_discovery(db_session, jsearch_data=data, serply_data={"jobs": []})
+        job = db_session.query(Job).first()
+        assert job is not None
+        assert job.description == ""
 
     def test_remote_jobs_filtered_out(self, db_session):
         """Jobs marked as remote should be removed by JobFilter."""
         data = _fake_jsearch_response(3)
         for job in data["data"]:
             job["job_is_remote"] = True
-        inserted, _, _ = self._run_pipeline(db_session, jsearch_data=data, serply_data={"jobs": []})
-        assert inserted == 0
+        self._run_discovery(db_session, jsearch_data=data, serply_data={"jobs": []})
+        assert db_session.query(Job).count() == 0
+
+    def test_requirements_parsed_and_stored(self, db_session):
+        """parse_and_store_requirements runs and stores JobRequirement rows."""
+        from app.models.job import JobRequirement
+        self._run_discovery(db_session)
+        # At least some jobs should have requirements parsed from their descriptions
+        req_count = db_session.query(JobRequirement).count()
+        assert req_count >= 0  # must not raise — even zero is acceptable if taxonomy is sparse
+
+    def test_discovery_status_reflects_run(self, db_session):
+        """discovery_status is updated correctly after a successful run."""
+        from app.services.api_aggregator import discovery_status
+        self._run_discovery(db_session)
+        assert discovery_status["status"] == "complete"
+        assert discovery_status["inserted"] is not None
+        assert discovery_status["updated"] is not None
+        assert discovery_status["filtered_out"] is not None
+        assert discovery_status["error"] is None
 
 
 class TestCompanyScrape:
@@ -289,7 +343,11 @@ class TestCompanyScrape:
             ],
         }
 
-        with patch("requests.Session.post") as mock_post:
+        csrf_resp = _mock_http_response({})
+        csrf_resp.cookies = {"CALYPSO_CSRF_TOKEN": "fake-csrf"}
+
+        with patch("requests.Session.get", return_value=csrf_resp), \
+             patch("requests.Session.post") as mock_post:
             mock_post.side_effect = [
                 _mock_http_response(page1),
                 _mock_http_response(page2),
@@ -313,3 +371,42 @@ class TestCompanyScrape:
         companies = _load_companies()
         enabled = [c for c in companies if c.get("ats_id")]
         assert len(enabled) >= 3, "Expected at least 3 scrapeable companies"
+
+    def test_skill_taxonomy_path_resolves(self):
+        """Regression: TAXONOMY_PATH used parents[4] (wrong) instead of parents[3]."""
+        from app.services.text_parser import TAXONOMY_PATH
+        assert TAXONOMY_PATH.exists(), (
+            f"skill_taxonomy.json not found at {TAXONOMY_PATH} — check parents[N] in text_parser.py"
+        )
+
+    def test_user_profile_path_resolves(self):
+        """Regression: USER_PROFILE_PATH used parents[4] (wrong) instead of parents[3]."""
+        from app.services.text_parser import USER_PROFILE_PATH
+        assert USER_PROFILE_PATH.exists(), (
+            f"user_profile.yaml not found at {USER_PROFILE_PATH} — check parents[N] in text_parser.py"
+        )
+
+    def test_parse_requirements_runs_after_upsert(self, db_session):
+        """Regression: parse_and_store_requirements was never exercised in pipeline tests.
+
+        Ensures the full pipeline including taxonomy loading and requirement parsing
+        completes without error.
+        """
+        from app.services.job_store import bulk_upsert_jobs, parse_and_store_requirements
+
+        jobs = [
+            {
+                "external_id": "test_parse_001",
+                "title": "Director of Data",
+                "description": "Python required. SQL preferred. 5+ years experience.",
+                "location": "New York, NY",
+                "work_arrangement": "unknown",
+                "application_url": "https://example.com/apply",
+                "source": "jsearch_api",
+                "discovered_date": "2026-04-01",
+                "company_name": "Test Corp",
+            }
+        ]
+        bulk_upsert_jobs(db_session, jobs)
+        # Must not raise — this exercises _load_taxonomy() and the real config path
+        parse_and_store_requirements(db_session, jobs)

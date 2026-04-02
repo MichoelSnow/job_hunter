@@ -43,7 +43,16 @@ class WorkdayScraper(BaseJobScraper):
             )
             return []
 
-        url = f"https://{tenant}.{instance}.myworkdayjobs.com/wday/cxs/{tenant}/{board}/jobs"
+        base_url = f"https://{tenant}.{instance}.myworkdayjobs.com"
+        url = f"{base_url}/wday/cxs/{tenant}/{board}/jobs"
+
+        # Workday requires a CSRF token obtained by loading the careers page first.
+        # The token is set as a cookie (CALYPSO_CSRF_TOKEN) and must be echoed back
+        # in the x-calypso-csrf-token request header.
+        self.session.get(f"{base_url}/{board}", timeout=15)
+        csrf_token = self.session.cookies.get("CALYPSO_CSRF_TOKEN", "")
+        headers = {"x-calypso-csrf-token": csrf_token} if csrf_token else {}
+
         all_jobs: list[dict[str, Any]] = []
         offset = 0
 
@@ -54,7 +63,7 @@ class WorkdayScraper(BaseJobScraper):
                 "searchText": "",
                 "appliedFacets": {},
             }
-            response = self.session.post(url, json=payload, timeout=15)
+            response = self.session.post(url, json=payload, headers=headers, timeout=15)
             response.raise_for_status()
             data = response.json()
 
@@ -87,7 +96,7 @@ class WorkdayScraper(BaseJobScraper):
 
         return {
             "external_id": external_id,
-            "title": raw.get("title", ""),
+            "title": raw.get("title") or "",
             "description": "",
             "location": raw.get("locationsText", ""),
             "work_arrangement": "unknown",
