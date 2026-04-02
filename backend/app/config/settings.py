@@ -14,24 +14,26 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:5173"]
 
     # Job Discovery
-    max_jobs_per_query: int = 500
     api_request_delay_seconds: int = 1
 
-    # Default search queries (can be extended via UI/criteria table)
+    # JSearch: num_pages per request (1–10 costs 2x quota; 11–20 costs 3x quota).
+    # 10 = 100 results per HTTP call at 2x quota cost — best efficiency on free plan.
+    jsearch_num_pages: int = 10
+
+    # Serply: results per request (max 100).
+    serply_num_results: int = 100
+
+    # Default search queries — kept broad so each query covers a wide role/industry range.
+    # Fewer queries = fewer API requests. 3 queries × 1 location = 3 HTTP calls per client.
     search_queries: list[str] = [
-        "data director healthcare",
-        "data leader healthcare",
-        "head of data healthcare",
-        "VP data healthcare",
-        "chief data officer healthcare",
-        "data director healthtech",
-        "head of data healthtech",
+        "director OR head OR VP data healthcare OR healthtech New York",
+        "chief data officer healthcare OR healthtech New York",
+        "data leader analytics healthcare OR healthtech New York",
     ]
 
+    # Single metro location — NYC search results naturally include Manhattan and Brooklyn.
     search_locations: list[str] = [
         "New York, NY",
-        "Manhattan, NY",
-        "Brooklyn, NY",
     ]
 
     # Scoring weights — only defined here, injected into ScoringEngine at construction

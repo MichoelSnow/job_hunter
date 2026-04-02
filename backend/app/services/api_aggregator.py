@@ -26,9 +26,14 @@ class JSearchClient:
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def search(self, query: str, location: str) -> list[dict[str, Any]]:
-        params = {"query": f"{query} {location}"}
+        # num_pages bundles multiple result pages into one HTTP response (each page = 10 jobs).
+        # Values 1–10 cost 2× quota; 11–20 cost 3× quota. Default of 10 → 100 results at 2× cost.
+        params = {
+            "query": f"{query} {location}",
+            "num_pages": settings.jsearch_num_pages,
+        }
         try:
-            response = self.session.get(self.URL, params=params, timeout=15)
+            response = self.session.get(self.URL, params=params, timeout=30)
             response.raise_for_status()
             data = response.json()
             time.sleep(settings.api_request_delay_seconds)
@@ -75,9 +80,10 @@ class SerplyClient:
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def search(self, query: str, location: str) -> list[dict[str, Any]]:
-        params = {"q": f"{query} {location}", "num": "10"}
+        # num / per_page: Serply supports up to 100 results per request.
+        params = {"q": f"{query} {location}", "num": str(settings.serply_num_results)}
         try:
-            response = self.session.get(self.URL, params=params, timeout=15)
+            response = self.session.get(self.URL, params=params, timeout=30)
             response.raise_for_status()
             data = response.json()
             time.sleep(settings.api_request_delay_seconds)

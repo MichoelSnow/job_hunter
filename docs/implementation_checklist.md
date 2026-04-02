@@ -113,25 +113,24 @@ Tracks build progress phase by phase. Items marked `[x]` are complete; `[~]` mea
   - [x] Routing (react-router-dom)
   - [x] Axios API client (`services/api.js`)
   - [x] React Query configured in `main.jsx`
-- [ ] Jobs Dashboard (`JobsPage.jsx`)
-  - [ ] Job list / table view
-  - [ ] Sortable columns (score, date, company, title)
-  - [ ] Filter panel (score range, location, date posted)
-  - [ ] Keyword search
-  - [ ] Job detail modal / side panel
-  - [ ] "Apply", "Hide", "View Details" actions on each job
-- [ ] Application Tracker (`ApplicationsPage.jsx`)
-  - [ ] Application list
-  - [ ] Status update
-  - [ ] Notes editing
-  - [ ] Status history timeline
-- [ ] Companies page (`CompaniesPage.jsx`)
-  - [ ] List companies with scraper status
-  - [ ] Add / edit company
-- [ ] Settings page (`SettingsPage.jsx`)
-  - [ ] Criteria management (add / edit / delete hard and soft criteria)
-  - [ ] API usage stats display
-  - [ ] Resume upload
+- [x] Jobs Dashboard (`JobsPage.jsx`)
+  - [x] Job list / table view
+  - [x] Sortable columns (score, date, title)
+  - [x] Filter panel (score range, location, date posted, work arrangement)
+  - [x] Job detail side panel
+  - [x] "Apply", "Hide" actions on each job
+- [x] Application Tracker (`ApplicationsPage.jsx`)
+  - [x] Application list
+  - [x] Status update
+  - [x] Notes editing
+  - [x] Status history timeline
+- [x] Companies page (`CompaniesPage.jsx`)
+  - [x] List companies with ATS metadata
+  - [x] Add / edit company
+- [x] Settings page (`SettingsPage.jsx`)
+  - [x] Criteria management (add / edit / delete hard and soft criteria)
+  - [x] API usage stats display
+  - [x] Resume upload
 
 ---
 
