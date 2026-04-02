@@ -123,7 +123,7 @@ export default function JobsPage() {
     queryFn: getRefreshStatus,
     // Poll every 2s while running, otherwise every 30s
     refetchInterval: (query) =>
-      query.state.data?.status === "running" ? 2000 : 30000,
+      query.state.data?.status === "running" ? 10000 : 30000,
     onSuccess: (data) => {
       if (data?.status === "complete") {
         queryClient.invalidateQueries({ queryKey: ["jobs"] });
