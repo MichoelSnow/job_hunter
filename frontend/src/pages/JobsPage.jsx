@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { getJob, getJobs, hideJob, refreshJobs } from "../services/api";
+import { getJob, getJobs, getRefreshStatus, hideJob, refreshJobs } from "../services/api";
 
 const ARRANGEMENTS = ["", "in_office", "hybrid", "remote"];
 
@@ -115,8 +115,23 @@ export default function JobsPage() {
 
   const refreshMutation = useMutation({
     mutationFn: refreshJobs,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["jobs"] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["refreshStatus"] }),
   });
+
+  const { data: refreshStatusData } = useQuery({
+    queryKey: ["refreshStatus"],
+    queryFn: getRefreshStatus,
+    // Poll every 2s while running, otherwise every 30s
+    refetchInterval: (query) =>
+      query.state.data?.status === "running" ? 2000 : 30000,
+    onSuccess: (data) => {
+      if (data?.status === "complete") {
+        queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      }
+    },
+  });
+
+  const isRunning = refreshStatusData?.status === "running";
 
   const hideMutation = useMutation({
     mutationFn: hideJob,
@@ -209,17 +224,35 @@ export default function JobsPage() {
           </div>
           <button
             onClick={() => refreshMutation.mutate()}
-            disabled={refreshMutation.isPending}
+            disabled={refreshMutation.isPending || isRunning}
             className="ml-auto rounded bg-blue-600 text-white px-3 py-1.5 text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
           >
-            {refreshMutation.isPending ? "Refreshing..." : "Refresh Jobs"}
+            {isRunning ? "Running..." : "Refresh Jobs"}
           </button>
         </div>
 
-        {/* Status */}
-        {refreshMutation.isSuccess && (
+        {/* Refresh progress banner */}
+        {isRunning && (
+          <div className="mb-3 rounded border border-blue-200 bg-blue-50 px-3 py-2">
+            <div className="flex items-center gap-2 text-sm text-blue-800 font-medium mb-1">
+              <span className="inline-block w-3 h-3 rounded-full bg-blue-400 animate-pulse" />
+              Job discovery running
+            </div>
+            {refreshStatusData?.step && (
+              <div className="text-xs text-blue-600">{refreshStatusData.step}</div>
+            )}
+          </div>
+        )}
+        {refreshStatusData?.status === "complete" && refreshStatusData?.inserted != null && (
           <div className="mb-3 text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
-            Job discovery started in background.
+            Discovery complete — {refreshStatusData.inserted} new,{" "}
+            {refreshStatusData.updated} updated,{" "}
+            {refreshStatusData.filtered_out} filtered out.
+          </div>
+        )}
+        {refreshStatusData?.status === "error" && (
+          <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+            Discovery failed: {refreshStatusData.error ?? "unknown error"}
           </div>
         )}
         {isError && (

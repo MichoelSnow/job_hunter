@@ -56,11 +56,22 @@ def get_job(job_id: int, db: Session = Depends(get_db)) -> Job:
 @router.post("/refresh")
 def refresh_jobs(background_tasks: BackgroundTasks) -> dict[str, str]:
     """Trigger job discovery and scoring in the background."""
-    from app.services.api_aggregator import run_job_discovery
+    from app.services.api_aggregator import discovery_status, run_job_discovery
+
+    if discovery_status.get("status") == "running":
+        return {"status": "already running"}
 
     background_tasks.add_task(run_job_discovery)
     logger.info("Job discovery triggered via API")
     return {"status": "Job discovery started"}
+
+
+@router.get("/refresh/status")
+def refresh_status() -> dict:
+    """Return the current state of the most recent job discovery run."""
+    from app.services.api_aggregator import discovery_status
+
+    return discovery_status
 
 
 @router.put("/{job_id}/hide")

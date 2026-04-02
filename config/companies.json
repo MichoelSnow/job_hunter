@@ -17,6 +17,22 @@
       "is_priority": true
     },
     {
+      "name": "Spring Health",
+      "industry": "healthtech",
+      "ats_type": "greenhouse",
+      "ats_id": "springhealth66",
+      "careers_url": "https://www.springhealth.com/careers",
+      "is_priority": true
+    },
+    {
+      "name": "Datavant",
+      "industry": "healthtech",
+      "ats_type": "greenhouse",
+      "ats_id": "datavant2",
+      "careers_url": "https://datavant.com/careers",
+      "is_priority": true
+    },
+    {
       "name": "Zocdoc",
       "industry": "healthtech",
       "ats_type": "greenhouse",
@@ -39,24 +55,6 @@
       "ats_id": "komodohealth",
       "careers_url": "https://www.komodohealth.com/careers",
       "is_priority": true
-    },
-    {
-      "name": "Spring Health",
-      "industry": "healthtech",
-      "ats_type": "custom",
-      "ats_id": null,
-      "careers_url": "https://www.springhealth.com/careers",
-      "is_priority": true,
-      "_note": "NEEDS VERIFICATION: ATS type unknown, careers page appears JS-rendered. Investigate manually."
-    },
-    {
-      "name": "Datavant",
-      "industry": "healthtech",
-      "ats_type": "custom",
-      "ats_id": null,
-      "careers_url": "https://datavant.com/careers",
-      "is_priority": true,
-      "_note": "NEEDS VERIFICATION: ATS type unknown, careers page appears JS-rendered. Investigate manually."
     },
     {
       "name": "Tempus",
@@ -95,67 +93,13 @@
       "is_priority": false
     },
     {
-      "name": "Quartet Health",
-      "industry": "healthtech",
-      "ats_type": "custom",
-      "ats_id": null,
-      "careers_url": "https://www.quartethealth.com/careers",
-      "is_priority": false,
-      "_note": "NEEDS VERIFICATION: Careers page returns 404 — company may have been acquired or restructured."
-    },
-    {
       "name": "Nuvation Bio",
       "industry": "healthtech",
       "ats_type": "custom",
       "ats_id": null,
       "careers_url": "https://nuvationbio.com/careers",
       "is_priority": false,
-      "_note": "NEEDS VERIFICATION: ATS type unknown, likely JS-rendered widget. Investigate manually."
-    },
-    {
-      "name": "Mount Sinai Health System",
-      "industry": "healthcare",
-      "ats_type": "custom",
-      "ats_id": null,
-      "careers_url": "https://www.mountsinai.org/about/careers",
-      "is_priority": false,
-      "_note": "NEEDS VERIFICATION: Large health system, likely Workday or Taleo. Investigate manually."
-    },
-    {
-      "name": "NYC Health + Hospitals",
-      "industry": "healthcare",
-      "ats_type": "custom",
-      "ats_id": null,
-      "careers_url": "https://careers.nychh.org",
-      "is_priority": false,
-      "_note": "NEEDS VERIFICATION: City agency, likely custom or Taleo ATS."
-    },
-    {
-      "name": "Maimonides Medical Center",
-      "industry": "healthcare",
-      "ats_type": "custom",
-      "ats_id": null,
-      "careers_url": "https://careers.maimo.org/",
-      "is_priority": false,
-      "_note": "NEEDS VERIFICATION: Custom careers site, ATS type unknown."
-    },
-    {
-      "name": "New York Presbyterian",
-      "industry": "healthcare",
-      "ats_type": "custom",
-      "ats_id": null,
-      "careers_url": "https://careers.nyp.org/",
-      "is_priority": false,
-      "_note": "NEEDS VERIFICATION: Large health system, likely Workday or Taleo. Investigate manually."
-    },
-    {
-      "name": "Northwell",
-      "industry": "healthcare",
-      "ats_type": "custom",
-      "ats_id": null,
-      "careers_url": "https://jobs.northwell.edu/",
-      "is_priority": false,
-      "_note": "NEEDS VERIFICATION: Large health system, likely Workday or Taleo. Investigate manually."
+      "_note": "Uses JobScore ATS (feed at careers.jobscore.com/jobs/nuvationbio/feed.json). Low priority — only build JobScore scraper if other companies using it are added."
     }
   ]
 }

@@ -149,21 +149,25 @@ Tracks build progress phase by phase. Items marked `[x]` are complete; `[~]` mea
 - [x] Verified Workday returns results: Tempus (112 jobs)
 - [x] Company management UI (Settings page — Phase 4)
 
-### Companies requiring manual ATS verification
+- [x] Verified Greenhouse returns results for Spring Health (ats_id: springhealth66) and Datavant (ats_id: datavant2)
 
-The following companies in `companies.json` are marked `ats_type: custom` with `ats_id: null` and will be skipped by scrapers until fixed. To fix: open the careers page in a browser, open DevTools → Network tab, filter for `XHR/Fetch`, and identify the ATS API call. For Workday companies, record the full POST URL and add `ats_type: workday`, `ats_id`, `workday_board`, and `workday_instance` to the company entry.
+### Companies not scraped directly — covered by JSearch/Serply
 
-| Company | Suspected ATS | How to fix |
-|---|---|---|
-| Spring Health | Unknown (JS-rendered) | Inspect https://www.springhealth.com/careers in browser DevTools |
-| Datavant | Unknown (JS-rendered) | Inspect https://datavant.com/careers in browser DevTools |
-| Quartet Health | Unknown | Careers page returns 404 — company may have been acquired; verify still exists |
-| Nuvation Bio | Unknown (JS-rendered) | Inspect https://nuvationbio.com/careers in browser DevTools |
-| Mount Sinai | Likely Workday/Taleo | Inspect https://www.mountsinai.org/about/careers in browser DevTools |
-| NYC Health + Hospitals | Likely Taleo/iCIMS | Inspect https://careers.nychh.org in browser DevTools |
-| Maimonides | Unknown | Inspect https://careers.maimo.org/ in browser DevTools |
-| New York Presbyterian | Likely Workday/Taleo | Inspect https://careers.nyp.org/ in browser DevTools |
-| Northwell | Likely Workday/Taleo | Inspect https://jobs.northwell.edu/ in browser DevTools |
+The large legacy health systems below have been removed from `companies.json`. Their ATS portals (Workday, Taleo, iCIMS) are high-effort to scrape and roles from these organizations will surface via the Google Jobs API sources instead.
+
+- Mount Sinai Health System
+- NYC Health + Hospitals
+- Maimonides Medical Center
+- New York Presbyterian
+- Northwell Health
+
+### Companies removed
+
+- **Quartet Health** — acquired, no longer exists as an independent company.
+
+### Companies with known ATS, not yet implemented
+
+- **Nuvation Bio** — uses JobScore (`careers.jobscore.com/jobs/nuvationbio/feed.json`). Remaining as `custom` / skipped. Build a `JobScoreScraper` if other companies using JobScore are added.
 
 ---
 

@@ -25,9 +25,10 @@ class Company(Base):
     careers_page_url: Mapped[str | None] = mapped_column(String(500))
     logo_url: Mapped[str | None] = mapped_column(String(500))
     description: Mapped[str | None] = mapped_column(Text)
-    ats_type: Mapped[str | None] = mapped_column(String(50))  # 'greenhouse', 'lever', 'custom'
+    ats_type: Mapped[str | None] = mapped_column(String(50))  # 'greenhouse', 'lever', 'workday', 'custom'
     ats_id: Mapped[str | None] = mapped_column(String(255))
     is_priority: Mapped[bool] = mapped_column(Boolean, default=False)
+    scraper_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_scraped_at: Mapped[datetime | None] = mapped_column(DateTime)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(

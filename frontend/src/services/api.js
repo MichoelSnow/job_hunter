@@ -9,6 +9,7 @@ const api = axios.create({
 export const getJobs = (params) => api.get("/jobs", { params }).then((r) => r.data);
 export const getJob = (id) => api.get(`/jobs/${id}`).then((r) => r.data);
 export const refreshJobs = () => api.post("/jobs/refresh").then((r) => r.data);
+export const getRefreshStatus = () => api.get("/jobs/refresh/status").then((r) => r.data);
 export const hideJob = (id) => api.put(`/jobs/${id}/hide`).then((r) => r.data);
 
 // Applications

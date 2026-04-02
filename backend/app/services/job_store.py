@@ -64,6 +64,8 @@ def upsert_job(db: Session, job_dict: dict[str, Any], company_id: int | None) ->
         for field in _MUTABLE_JOB_FIELDS:
             value = job_dict.get(field)
             if value is not None:
+                if field in ("posted_date",) and isinstance(value, str):
+                    value = date.fromisoformat(value)
                 setattr(existing, field, value)
         return existing, False
 

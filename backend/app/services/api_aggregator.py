@@ -1,7 +1,7 @@
 """Job discovery via external job search APIs (JSearch via OpenWebNinja, Serply)."""
 import logging
 import time
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 import requests
@@ -10,6 +10,23 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from app.config.settings import settings
 
 logger = logging.getLogger(__name__)
+
+# Module-level status — single-user app, in-memory is sufficient.
+# Shape is intentionally simple so the API endpoint can return it directly.
+discovery_status: dict[str, Any] = {
+    "status": "idle",  # idle | running | complete | error
+    "step": None,
+    "started_at": None,
+    "completed_at": None,
+    "inserted": None,
+    "updated": None,
+    "filtered_out": None,
+    "error": None,
+}
+
+
+def _set_status(**kwargs: Any) -> None:
+    discovery_status.update(kwargs)
 
 
 class JSearchClient:
@@ -164,7 +181,7 @@ def _load_companies() -> list[dict]:
     import json
     from pathlib import Path
 
-    path = Path(__file__).parents[4] / "config" / "companies.json"
+    path = Path(__file__).parents[3] / "config" / "companies.json"
     if not path.exists():
         logger.warning("companies.json not found at %s", path)
         return []
@@ -187,7 +204,9 @@ def run_company_scrape() -> list[dict]:
     all_jobs: list[dict] = []
     seen_ids: set[str] = set()
 
-    for company in enabled:
+    for i, company in enumerate(enabled, 1):
+        name = company.get("name", "unknown")
+        _set_status(step=f"Scraping {name} ({i}/{len(enabled)})")
         scraper = get_scraper(company)
         jobs = scraper.fetch_jobs()
         for job in jobs:
@@ -204,61 +223,89 @@ def run_job_discovery() -> None:
     """
     Full job discovery pipeline:
       1. Fetch from external APIs (JSearch, Serply)
-      2. Fetch from company ATS scrapers (Greenhouse, Lever)
+      2. Fetch from company ATS scrapers (Greenhouse, Lever, Workday)
       3. Apply hard filters (location, work arrangement, role level)
       4. Upsert filtered jobs into the database
-      5. Record API usage
+      5. Parse requirements and score all active jobs
     """
     from app.db.session import SessionLocal
     from app.services.job_filter import JobFilter
     from app.services.job_store import bulk_upsert_jobs, record_api_usage
 
+    _set_status(
+        status="running",
+        step="Fetching from job search APIs...",
+        started_at=datetime.utcnow().isoformat(),
+        completed_at=None,
+        inserted=None,
+        updated=None,
+        filtered_out=None,
+        error=None,
+    )
     logger.info("Starting job discovery run")
 
-    api_jobs = JobAPIAggregator().search_all()
-    scraped_jobs = run_company_scrape()
-    all_jobs = api_jobs + scraped_jobs
-
-    logger.info(
-        "Fetched %d API jobs + %d scraped jobs = %d total",
-        len(api_jobs),
-        len(scraped_jobs),
-        len(all_jobs),
-    )
-
-    filtered_jobs = JobFilter().apply_all(all_jobs)
-
-    db = SessionLocal()
     try:
-        inserted, updated = bulk_upsert_jobs(db, filtered_jobs)
+        api_jobs = JobAPIAggregator().search_all()
 
-        # Record one usage row per source present in this run
-        sources: dict[str, int] = {}
-        for job in all_jobs:
-            sources[job.get("source", "unknown")] = sources.get(job.get("source", "unknown"), 0) + 1
-        for source, count in sources.items():
-            record_api_usage(db, api_name=source, request_count=count)
-        db.commit()
+        _set_status(step="Scraping company job boards...")
+        scraped_jobs = run_company_scrape()
+        all_jobs = api_jobs + scraped_jobs
 
-        # Parse requirements and score all active jobs
-        from app.services.job_store import parse_and_store_requirements
-        from app.services.scoring_engine import ScoringEngine
-        from app.services.text_parser import load_user_profile
+        logger.info(
+            "Fetched %d API jobs + %d scraped jobs = %d total",
+            len(api_jobs),
+            len(scraped_jobs),
+            len(all_jobs),
+        )
 
-        parse_and_store_requirements(db, filtered_jobs)
+        _set_status(step="Filtering jobs...")
+        filtered_jobs = JobFilter().apply_all(all_jobs)
 
-        user_profile = load_user_profile()
-        engine = ScoringEngine(settings, user_profile)
-        _score_all_active_jobs(db, engine)
-    finally:
-        db.close()
+        _set_status(step="Saving to database...")
+        db = SessionLocal()
+        try:
+            inserted, updated = bulk_upsert_jobs(db, filtered_jobs)
 
-    logger.info(
-        "Discovery run complete: %d inserted, %d updated, %d filtered out",
-        inserted,
-        updated,
-        len(all_jobs) - len(filtered_jobs),
-    )
+            sources: dict[str, int] = {}
+            for job in all_jobs:
+                sources[job.get("source", "unknown")] = sources.get(job.get("source", "unknown"), 0) + 1
+            for source, count in sources.items():
+                record_api_usage(db, api_name=source, request_count=count)
+            db.commit()
+
+            _set_status(step="Parsing job requirements...")
+            from app.services.job_store import parse_and_store_requirements
+            from app.services.scoring_engine import ScoringEngine
+            from app.services.text_parser import load_user_profile
+
+            parse_and_store_requirements(db, filtered_jobs)
+
+            _set_status(step="Scoring jobs...")
+            user_profile = load_user_profile()
+            engine = ScoringEngine(settings, user_profile)
+            _score_all_active_jobs(db, engine)
+        finally:
+            db.close()
+
+        filtered_out = len(all_jobs) - len(filtered_jobs)
+        _set_status(
+            status="complete",
+            step=None,
+            completed_at=datetime.utcnow().isoformat(),
+            inserted=inserted,
+            updated=updated,
+            filtered_out=filtered_out,
+        )
+        logger.info(
+            "Discovery run complete: %d inserted, %d updated, %d filtered out",
+            inserted,
+            updated,
+            filtered_out,
+        )
+
+    except Exception as exc:
+        _set_status(status="error", step=None, completed_at=datetime.utcnow().isoformat(), error=str(exc))
+        logger.exception("Job discovery run failed")
 
 
 def _score_all_active_jobs(db: "Session", engine: "ScoringEngine") -> None:
