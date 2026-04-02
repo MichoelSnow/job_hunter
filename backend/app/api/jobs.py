@@ -75,10 +75,58 @@ def hide_job(job_id: int, db: Session = Depends(get_db)) -> dict[str, str]:
 
 
 @router.put("/{job_id}/score")
-def rescore_job(job_id: int, db: Session = Depends(get_db)) -> dict[str, str]:
-    """Recalculate match scores for a single job."""
+def rescore_job(job_id: int, db: Session = Depends(get_db)) -> dict[str, str | float]:
+    """Recalculate match scores for a single job using the current user profile and criteria."""
+    from datetime import datetime
+
+    from app.models.criteria import UserCriteria
+    from app.services.scoring_engine import ScoringEngine
+    from app.services.text_parser import load_user_profile
+
     job = db.get(Job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    # TODO: invoke scoring_engine
-    return {"status": "rescoring queued"}
+
+    from app.config.settings import settings as app_settings
+
+    user_profile = load_user_profile()
+    engine = ScoringEngine(app_settings, user_profile)
+
+    criteria = [
+        {
+            "criterion_type": c.criterion_type,
+            "criterion_value": c.criterion_value,
+            "is_hard_requirement": c.is_hard_requirement,
+            "weight": c.weight,
+        }
+        for c in db.query(UserCriteria).all()
+    ]
+    required_skills = [
+        r.requirement_value
+        for r in job.requirements
+        if r.requirement_type == "skill" and r.is_required
+    ]
+    experience_required = next(
+        (int(r.requirement_value) for r in job.requirements if r.requirement_type == "experience"),
+        None,
+    )
+    job_dict = {
+        "title": job.title,
+        "required_skills": required_skills,
+        "experience_required": experience_required,
+        "salary_min": job.salary_min,
+        "company_industry": None,
+    }
+    u2j, j2u, overall = engine.score(job_dict, criteria)
+    job.match_score_user_to_job = u2j
+    job.match_score_job_to_user = j2u
+    job.overall_match_score = overall
+    job.score_calculated_at = datetime.utcnow()
+    db.commit()
+
+    return {
+        "status": "scored",
+        "match_score_user_to_job": u2j,
+        "match_score_job_to_user": j2u,
+        "overall_match_score": overall,
+    }

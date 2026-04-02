@@ -38,13 +38,14 @@ def on_startup() -> None:
     logger.info("Loaded user profile for %s", app.state.user_profile.get("user", {}).get("name", "unknown"))
 
 
-from app.api import analytics, applications, companies, criteria, jobs  # noqa: E402
+from app.api import analytics, applications, companies, criteria, jobs, user  # noqa: E402
 
 app.include_router(jobs.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")
 app.include_router(companies.router, prefix="/api")
 app.include_router(criteria.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
+app.include_router(user.router, prefix="/api")
 
 
 @app.get("/health")
