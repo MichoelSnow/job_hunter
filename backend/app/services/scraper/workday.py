@@ -18,6 +18,7 @@ import logging
 from datetime import date
 from typing import Any
 
+from app.services.job_normalization import infer_work_arrangement
 from app.services.scraper.base import BaseJobScraper
 
 logger = logging.getLogger(__name__)
@@ -94,17 +95,24 @@ class WorkdayScraper(BaseJobScraper):
         req_id = bullet_fields[0] if bullet_fields else ""
         external_id = f"wd_{tenant}_{req_id}" if req_id else f"wd_{tenant}_{external_path.split('_')[-1]}"
 
+        title = raw.get("title") or ""
+        location = raw.get("locationsText", "")
         return {
             "external_id": external_id,
-            "title": raw.get("title") or "",
+            "title": title,
             "description": "",
-            "location": raw.get("locationsText", ""),
-            "work_arrangement": "unknown",
+            "location": location,
+            "work_arrangement": infer_work_arrangement(
+                title=title,
+                location=location,
+                description="",
+            ),
             "application_url": apply_url,
             "source": "workday",
             "source_url": apply_url,
             "posted_date": None,
             "discovered_date": date.today().isoformat(),
             "company_name": self.company.get("name"),
+            "company_industry": self.company.get("industry"),
             "raw_data": raw,
         }

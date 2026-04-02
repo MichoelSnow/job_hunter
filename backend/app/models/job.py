@@ -80,6 +80,14 @@ class Job(Base):
         Index("idx_jobs_location", "location"),
     )
 
+    @property
+    def company_name(self) -> str | None:
+        return self.company.name if self.company else None
+
+    @property
+    def company_industry(self) -> str | None:
+        return self.company.industry if self.company else None
+
 
 class JobRequirement(Base):
     __tablename__ = "job_requirements"

@@ -10,6 +10,7 @@ from app.models.job import Job, JobRequirement
 from app.models.tracking import ApiUsageTracking
 
 logger = logging.getLogger(__name__)
+_JOB_COLUMN_KEYS = set(Job.__table__.columns.keys())
 
 # Fields on Job that should be updated when a job is seen again
 _MUTABLE_JOB_FIELDS = (
@@ -30,7 +31,12 @@ _MUTABLE_JOB_FIELDS = (
 )
 
 
-def upsert_company(db: Session, name: str, logo_url: str | None = None) -> int:
+def upsert_company(
+    db: Session,
+    name: str,
+    logo_url: str | None = None,
+    industry: str | None = None,
+) -> int:
     """
     Get or create a Company row by name.
     Updates logo_url if the existing row is missing it.
@@ -38,12 +44,14 @@ def upsert_company(db: Session, name: str, logo_url: str | None = None) -> int:
     """
     company = db.query(Company).filter(Company.name == name).first()
     if company is None:
-        company = Company(name=name, logo_url=logo_url)
+        company = Company(name=name, logo_url=logo_url, industry=industry)
         db.add(company)
         db.flush()  # populate company.id without committing
         logger.debug("Created company: %s", name)
     elif logo_url and not company.logo_url:
         company.logo_url = logo_url
+    if industry and not company.industry:
+        company.industry = industry
     return company.id
 
 
@@ -73,7 +81,7 @@ def upsert_job(db: Session, job_dict: dict[str, Any], company_id: int | None) ->
     job_fields = {
         k: v
         for k, v in job_dict.items()
-        if k not in ("company_name", "company_logo") and hasattr(Job, k)
+        if k not in ("company_name", "company_logo", "company_industry") and k in _JOB_COLUMN_KEYS
     }
     job_fields["company_id"] = company_id
     if isinstance(job_fields.get("discovered_date"), str):
@@ -176,7 +184,10 @@ def bulk_upsert_jobs(
         company_id: int | None = None
         if company_name:
             company_id = upsert_company(
-                db, company_name, logo_url=job_dict.get("company_logo")
+                db,
+                company_name,
+                logo_url=job_dict.get("company_logo"),
+                industry=job_dict.get("company_industry"),
             )
 
         _, created = upsert_job(db, job_dict, company_id)

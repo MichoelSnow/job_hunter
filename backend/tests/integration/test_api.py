@@ -1,4 +1,8 @@
 """Integration tests: one happy path + one error path per API resource."""
+from datetime import date
+
+from app.models.company import Company
+from app.models.job import Job
 
 
 # ---------------------------------------------------------------------------
@@ -28,6 +32,7 @@ class TestJobsAPI:
         resp = client.get(f"/api/jobs/{job_id}")
         assert resp.status_code == 200
         assert resp.json()["id"] == job_id
+        assert "company_name" in resp.json()
 
     def test_hide_job(self, client_with_job):
         client, job_id = client_with_job
@@ -45,12 +50,49 @@ class TestJobsAPI:
         resp = client.put("/api/jobs/999/score")
         assert resp.status_code == 404
 
+    def test_score_job_uses_company_industry(self, client, db_session):
+        company = Company(name="Health Corp", industry="healthcare")
+        db_session.add(company)
+        db_session.flush()
+        job = Job(
+            title="Director of Data",
+            description="Lead data strategy",
+            location="Manhattan, NY",
+            work_arrangement="in_office",
+            application_url="https://example.com/apply",
+            source="manual",
+            discovered_date=date(2026, 4, 1),
+            company_id=company.id,
+        )
+        db_session.add(job)
+        db_session.commit()
+        db_session.refresh(job)
+
+        criterion_resp = client.post(
+            "/api/criteria",
+            json={
+                "criterion_type": "industry",
+                "criterion_value": "healthcare",
+                "is_hard_requirement": False,
+                "weight": 2.0,
+            },
+        )
+        assert criterion_resp.status_code == 201
+
+        resp = client.put(f"/api/jobs/{job.id}/score")
+        assert resp.status_code == 200
+        assert resp.json()["match_score_job_to_user"] > 0
+
 
 # ---------------------------------------------------------------------------
 # Applications
 # ---------------------------------------------------------------------------
 
 class TestApplicationsAPI:
+    def test_create_application_missing_job_not_found(self, client):
+        resp = client.post("/api/applications", json={"job_id": 999, "status": "interested"})
+        assert resp.status_code == 404
+
     def test_create_application(self, client_with_job):
         client, job_id = client_with_job
         resp = client.post("/api/applications", json={"job_id": job_id, "status": "interested"})

@@ -1,3 +1,6 @@
+from typing import Any
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -47,6 +50,31 @@ class Settings(BaseSettings):
     education_match_weight: float = 0.10
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def parse_debug(cls, value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "on", "debug", "development", "dev"}:
+                return True
+            if normalized in {"0", "false", "no", "off", "release", "prod", "production"}:
+                return False
+        raise ValueError("debug must be a boolean-compatible value")
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: Any) -> list[str]:
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip()
+            if not normalized:
+                return []
+            return [v.strip() for v in normalized.split(",") if v.strip()]
+        raise ValueError("cors_origins must be a list or comma-separated string")
 
 
 settings = Settings()

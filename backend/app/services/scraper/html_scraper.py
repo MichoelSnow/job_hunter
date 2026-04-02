@@ -16,6 +16,7 @@ import logging
 from datetime import date
 from typing import Any
 
+from app.services.job_normalization import infer_work_arrangement
 from app.services.scraper.base import BaseJobScraper
 
 logger = logging.getLogger(__name__)
@@ -84,17 +85,24 @@ class HtmlScraper(BaseJobScraper):
         id_src = f"{company_name}::{raw.get('title', '')}::{raw.get('url', '')}"
         short_hash = hashlib.md5(id_src.encode()).hexdigest()[:12]
 
+        title = raw.get("title", "")
+        location = raw.get("location", "")
         return {
             "external_id": f"html_{short_hash}",
-            "title": raw.get("title", ""),
+            "title": title,
             "description": "",
-            "location": raw.get("location", ""),
-            "work_arrangement": "unknown",
+            "location": location,
+            "work_arrangement": infer_work_arrangement(
+                title=title,
+                location=location,
+                description="",
+            ),
             "application_url": raw.get("url", ""),
             "source": "html_scraper",
             "source_url": raw.get("url"),
             "posted_date": None,
             "discovered_date": date.today().isoformat(),
             "company_name": company_name,
+            "company_industry": self.company.get("industry"),
             "raw_data": raw,
         }

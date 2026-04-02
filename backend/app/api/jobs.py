@@ -126,7 +126,7 @@ def rescore_job(job_id: int, db: Session = Depends(get_db)) -> dict[str, str | f
         "required_skills": required_skills,
         "experience_required": experience_required,
         "salary_min": job.salary_min,
-        "company_industry": None,
+        "company_industry": job.company.industry if job.company else None,
     }
     u2j, j2u, overall = engine.score(job_dict, criteria)
     job.match_score_user_to_job = u2j

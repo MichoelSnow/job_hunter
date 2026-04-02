@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, UploadFile
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/user", tags=["user"])
 
-_REPO_ROOT = Path(__file__).parents[4]
+_REPO_ROOT = Path(__file__).parents[3]
 _DATA_DIR = _REPO_ROOT / "data"
 _ALLOWED_SUFFIXES = {".md", ".txt", ".pdf", ".docx"}
 

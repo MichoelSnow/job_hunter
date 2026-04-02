@@ -1,20 +1,48 @@
 import logging
 from collections.abc import Generator
+from pathlib import Path
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
+_REPO_ROOT = Path(__file__).parents[3]
+
+
+def _resolve_database_url(url: str) -> str:
+    if not url.startswith("sqlite:///"):
+        return url
+
+    raw_path = url.removeprefix("sqlite:///")
+    if raw_path == ":memory:":
+        return url
+
+    db_path = Path(raw_path)
+    if not db_path.is_absolute():
+        db_path = (_REPO_ROOT / db_path).resolve()
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    return f"sqlite:///{db_path}"
+
+
+_database_url = _resolve_database_url(settings.database_url)
+
 engine = create_engine(
-    settings.database_url,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.database_url else {},
+    _database_url,
+    connect_args={"check_same_thread": False} if "sqlite" in _database_url else {},
     echo=settings.debug,
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+if "sqlite" in _database_url:
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragma(dbapi_connection, connection_record) -> None:  # type: ignore[no-untyped-def]
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 
 def get_db() -> Generator[Session, None, None]:

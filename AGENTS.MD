@@ -10,6 +10,7 @@
  - Prefer the lowest-maintenance solution that is still safe and acceptable for production use.
  - Avoid introducing recurring operational toil (manual rotations, frequent audits, brittle workflows) unless the user explicitly requests it or it is mandatory for core security/safety.
  - For security and reliability work, favor simple, durable controls with clear defaults and minimal ongoing upkeep.
+ - Do not keep or add legacy compatibility code unless the user explicitly requests it; optimize for current behavior only.
 
 ### Python Specific Instructions
  - Use tenacity for retries when querying APIs

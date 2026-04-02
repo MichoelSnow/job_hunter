@@ -145,7 +145,8 @@ Tracks build progress phase by phase. Items marked `[x]` are complete; `[~]` mea
 - [x] Scraper dispatcher (`get_scraper()` in `scraper/__init__.py`)
 - [x] Wire company scrapers into `run_job_discovery()`
 - [x] Verified Greenhouse returns results: Oscar (280 jobs), Flatiron (11), Zocdoc (76), Maven Clinic (20), Komodo Health (38)
-- [x] Verified Lever returns results: Ro (47 jobs), Alma (2 jobs)
+- [x] Verified Lever returns results: Ro (47 jobs)
+- [x] Verified Greenhouse returns results: Alma (2 jobs)
 - [x] Verified Workday returns results: Tempus (112 jobs)
 - [x] Company management UI (Settings page — Phase 4)
 

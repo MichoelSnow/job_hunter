@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.application import Application, ApplicationStatusHistory
+from app.models.job import Job
 from app.schemas.application import (
     ApplicationCreate,
     ApplicationResponse,
@@ -23,6 +24,10 @@ def list_applications(db: Session = Depends(get_db)) -> list[Application]:
 
 @router.post("", response_model=ApplicationResponse, status_code=201)
 def create_application(payload: ApplicationCreate, db: Session = Depends(get_db)) -> Application:
+    job = db.get(Job, payload.job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
     existing = db.query(Application).filter(Application.job_id == payload.job_id).first()
     if existing:
         raise HTTPException(status_code=409, detail="Application for this job already exists")

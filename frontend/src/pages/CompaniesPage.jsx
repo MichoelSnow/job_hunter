@@ -38,7 +38,7 @@ export default function CompaniesPage() {
     setEditingId(company.id);
     setEditData({
       name: company.name,
-      website: company.website ?? "",
+      website_url: company.website_url ?? "",
       ats_type: company.ats_type ?? "",
       ats_id: company.ats_id ?? "",
     });
@@ -49,7 +49,7 @@ export default function CompaniesPage() {
       id: editingId,
       data: {
         ...editData,
-        website: editData.website || null,
+        website_url: editData.website_url || null,
         ats_type: editData.ats_type || null,
         ats_id: editData.ats_id || null,
       },
@@ -125,14 +125,14 @@ export default function CompaniesPage() {
                   <td className="px-4 py-2 text-gray-600">
                     {editingId === company.id ? (
                       <input
-                        value={editData.website}
-                        onChange={(e) => setEditData((d) => ({ ...d, website: e.target.value }))}
+                        value={editData.website_url}
+                        onChange={(e) => setEditData((d) => ({ ...d, website_url: e.target.value }))}
                         placeholder="https://..."
                         className="border rounded px-1 py-0.5 text-sm w-40"
                       />
-                    ) : company.website ? (
-                      <a href={company.website} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
-                        {company.website}
+                    ) : company.website_url ? (
+                      <a href={company.website_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                        {company.website_url}
                       </a>
                     ) : (
                       "—"
@@ -148,6 +148,8 @@ export default function CompaniesPage() {
                         <option value="">—</option>
                         <option value="greenhouse">greenhouse</option>
                         <option value="lever">lever</option>
+                        <option value="workday">workday</option>
+                        <option value="custom">custom</option>
                         <option value="html">html</option>
                       </select>
                     ) : (

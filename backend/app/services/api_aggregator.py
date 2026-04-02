@@ -8,6 +8,7 @@ import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.config.settings import settings
+from app.services.job_normalization import infer_work_arrangement
 
 logger = logging.getLogger(__name__)
 
@@ -61,12 +62,19 @@ class JSearchClient:
             raise
 
     def normalize(self, raw: dict[str, Any]) -> dict[str, Any]:
+        description = raw.get("job_description") or ""
+        location = f"{raw.get('job_city', '')}, {raw.get('job_state', '')}".strip(", ")
         return {
             "external_id": f"js_{raw.get('job_id')}",
             "title": raw.get("job_title") or "",
-            "description": raw.get("job_description") or "",
-            "location": f"{raw.get('job_city', '')}, {raw.get('job_state', '')}".strip(", "),
-            "work_arrangement": "remote" if raw.get("job_is_remote") else "unknown",
+            "description": description,
+            "location": location,
+            "work_arrangement": infer_work_arrangement(
+                title=raw.get("job_title"),
+                location=location,
+                description=description,
+                is_remote=raw.get("job_is_remote"),
+            ),
             "salary_min": raw.get("job_min_salary"),
             "salary_max": raw.get("job_max_salary"),
             "salary_currency": raw.get("job_salary_currency") or "USD",
@@ -80,6 +88,7 @@ class JSearchClient:
             "raw_data": raw,
             "company_name": raw.get("employer_name"),
             "company_logo": raw.get("employer_logo"),
+            "company_industry": None,
         }
 
 
@@ -111,12 +120,18 @@ class SerplyClient:
             raise
 
     def normalize(self, raw: dict[str, Any]) -> dict[str, Any]:
+        description = raw.get("description") or ""
+        location = raw.get("location") or ""
         return {
             "external_id": f"sp_{raw.get('job_id') or raw.get('link', '')[-32:]}",
             "title": raw.get("title") or "",
-            "description": raw.get("description") or "",
-            "location": raw.get("location") or "",
-            "work_arrangement": "unknown",
+            "description": description,
+            "location": location,
+            "work_arrangement": infer_work_arrangement(
+                title=raw.get("title"),
+                location=location,
+                description=description,
+            ),
             "salary_min": None,
             "salary_max": None,
             "salary_currency": "USD",
@@ -130,6 +145,7 @@ class SerplyClient:
             "raw_data": raw,
             "company_name": raw.get("company_name"),
             "company_logo": None,
+            "company_industry": None,
         }
 
 
@@ -347,7 +363,7 @@ def _score_all_active_jobs(db: "Session", engine: "ScoringEngine") -> None:
             "required_skills": required_skills,
             "experience_required": experience_required,
             "salary_min": job.salary_min,
-            "company_industry": None,  # TODO: add industry to Company model
+            "company_industry": job.company.industry if job.company else None,
         }
         u2j, j2u, overall = engine.score(job_dict, criteria)
         job.match_score_user_to_job = u2j

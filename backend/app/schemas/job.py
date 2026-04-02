@@ -35,6 +35,8 @@ class JobResponse(JobBase):
     id: int
     external_id: str | None = None
     company_id: int | None = None
+    company_name: str | None = None
+    company_industry: str | None = None
     discovered_date: date
     is_active: bool
     match_score_user_to_job: float | None = None

@@ -9,7 +9,7 @@ import {
 } from "../services/api";
 import axios from "axios";
 
-const CRITERION_TYPES = ["industry", "location", "salary", "role_level", "company_size", "other"];
+const CRITERION_TYPES = ["industry", "location", "min_salary", "role_level", "company_size", "other"];
 
 function ResumeUploadSection() {
   const fileRef = useRef(null);
@@ -100,16 +100,16 @@ function ApiUsageSection() {
           <thead className="text-xs text-gray-500 uppercase tracking-wide">
             <tr>
               <th className="text-left py-1">Source</th>
-              <th className="text-left py-1">Date</th>
               <th className="text-right py-1">Requests</th>
+              <th className="text-right py-1">Cost</th>
             </tr>
           </thead>
           <tbody>
             {usage.map((row, i) => (
               <tr key={i} className="border-t">
-                <td className="py-1 text-gray-700">{row.source}</td>
-                <td className="py-1 text-gray-500">{row.date}</td>
-                <td className="py-1 text-right text-gray-700">{row.request_count}</td>
+                <td className="py-1 text-gray-700">{row.api_name}</td>
+                <td className="py-1 text-right text-gray-700">{row.total_requests}</td>
+                <td className="py-1 text-right text-gray-700">${(row.total_cost ?? 0).toFixed(4)}</td>
               </tr>
             ))}
           </tbody>

@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { getJob, getJobs, getRefreshStatus, hideJob, refreshJobs } from "../services/api";
 
 const ARRANGEMENTS = ["", "in_office", "hybrid", "remote"];
@@ -13,6 +13,18 @@ function ScoreBadge({ score }) {
       {score.toFixed(1)}
     </span>
   );
+}
+
+function formatSalary(job) {
+  if (!job.salary_min && !job.salary_max) return "—";
+  const min = job.salary_min ? `$${job.salary_min.toLocaleString()}` : "";
+  const max = job.salary_max ? `$${job.salary_max.toLocaleString()}` : "";
+  if (min && max) return `${min} - ${max}`;
+  return min || max;
+}
+
+function formatPostedDate(job) {
+  return job.posted_date ?? "—";
 }
 
 function JobDetailPanel({ jobId, onClose, onHide }) {
@@ -38,6 +50,10 @@ function JobDetailPanel({ jobId, onClose, onHide }) {
         <div className="flex-1 overflow-y-auto p-5 space-y-4 text-sm">
           <div className="grid grid-cols-2 gap-3 text-gray-700">
             <div>
+              <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Company</div>
+              <div>{job.company_name ?? "—"}</div>
+            </div>
+            <div>
               <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Location</div>
               <div>{job.location ?? "—"}</div>
             </div>
@@ -47,13 +63,7 @@ function JobDetailPanel({ jobId, onClose, onHide }) {
             </div>
             <div>
               <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Salary</div>
-              <div>
-                {job.salary_min || job.salary_max
-                  ? `${job.salary_min ? "$" + job.salary_min.toLocaleString() : ""}${
-                      job.salary_max ? " – $" + job.salary_max.toLocaleString() : ""
-                    }`
-                  : "—"}
-              </div>
+              <div>{formatSalary(job)}</div>
             </div>
             <div>
               <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Match Score</div>
@@ -68,6 +78,10 @@ function JobDetailPanel({ jobId, onClose, onHide }) {
             <div>
               <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Discovered</div>
               <div>{job.discovered_date}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Posted</div>
+              <div>{formatPostedDate(job)}</div>
             </div>
           </div>
           <div>
@@ -121,15 +135,16 @@ export default function JobsPage() {
   const { data: refreshStatusData } = useQuery({
     queryKey: ["refreshStatus"],
     queryFn: getRefreshStatus,
-    // Poll every 2s while running, otherwise every 30s
+    // Poll every 10s while running, otherwise every 30s
     refetchInterval: (query) =>
       query.state.data?.status === "running" ? 10000 : 30000,
-    onSuccess: (data) => {
-      if (data?.status === "complete") {
-        queryClient.invalidateQueries({ queryKey: ["jobs"] });
-      }
-    },
   });
+
+  useEffect(() => {
+    if (refreshStatusData?.status === "complete") {
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    }
+  }, [queryClient, refreshStatusData?.status]);
 
   const isRunning = refreshStatusData?.status === "running";
 
@@ -152,6 +167,7 @@ export default function JobsPage() {
     if (sort === "score") return (b.overall_match_score ?? -1) - (a.overall_match_score ?? -1);
     if (sort === "date") return (b.discovered_date ?? "").localeCompare(a.discovered_date ?? "");
     if (sort === "title") return (a.title ?? "").localeCompare(b.title ?? "");
+    if (sort === "company") return (a.company_name ?? "").localeCompare(b.company_name ?? "");
     return 0;
   });
 
@@ -220,6 +236,7 @@ export default function JobsPage() {
               <option value="score">Score</option>
               <option value="date">Date</option>
               <option value="title">Title</option>
+              <option value="company">Company</option>
             </select>
           </div>
           <button
@@ -267,8 +284,12 @@ export default function JobsPage() {
             <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
               <tr>
                 <th className="text-left px-4 py-2">Title</th>
+                <th className="text-left px-4 py-2">Company</th>
                 <th className="text-left px-4 py-2">Location</th>
                 <th className="text-left px-4 py-2">Arrangement</th>
+                <th className="text-left px-4 py-2">Salary</th>
+                <th className="text-left px-4 py-2">Source</th>
+                <th className="text-left px-4 py-2">Posted</th>
                 <th className="text-left px-4 py-2">Discovered</th>
                 <th className="text-right px-4 py-2">Score</th>
                 <th className="px-4 py-2"></th>
@@ -277,13 +298,13 @@ export default function JobsPage() {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
+                  <td colSpan={10} className="px-4 py-8 text-center text-gray-400">
                     Loading...
                   </td>
                 </tr>
               ) : sorted.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-8 text-center text-gray-400">
+                  <td colSpan={10} className="px-4 py-8 text-center text-gray-400">
                     No jobs found.
                   </td>
                 </tr>
@@ -299,8 +320,12 @@ export default function JobsPage() {
                     <td className="px-4 py-2 font-medium text-gray-900 max-w-xs truncate">
                       {job.title}
                     </td>
+                    <td className="px-4 py-2 text-gray-700">{job.company_name ?? "—"}</td>
                     <td className="px-4 py-2 text-gray-600">{job.location ?? "—"}</td>
                     <td className="px-4 py-2 text-gray-600">{job.work_arrangement ?? "—"}</td>
+                    <td className="px-4 py-2 text-gray-600">{formatSalary(job)}</td>
+                    <td className="px-4 py-2 text-gray-600">{job.source ?? "—"}</td>
+                    <td className="px-4 py-2 text-gray-500">{formatPostedDate(job)}</td>
                     <td className="px-4 py-2 text-gray-500">{job.discovered_date}</td>
                     <td className="px-4 py-2 text-right">
                       <ScoreBadge score={job.overall_match_score} />

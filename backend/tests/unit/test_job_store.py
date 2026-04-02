@@ -55,6 +55,24 @@ class TestUpsertCompany:
         company = db.query(Company).filter(Company.name == "Health Corp").first()
         assert company.logo_url == "https://example.com/logo.png"
 
+    def test_sets_industry_on_create(self, db):
+        from app.models.company import Company
+
+        upsert_company(db, "Health Corp", industry="healthtech")
+        db.commit()
+        company = db.query(Company).filter(Company.name == "Health Corp").first()
+        assert company.industry == "healthtech"
+
+    def test_sets_industry_if_existing_company_missing_it(self, db):
+        from app.models.company import Company
+
+        upsert_company(db, "Health Corp")
+        db.commit()
+        upsert_company(db, "Health Corp", industry="healthcare")
+        db.commit()
+        company = db.query(Company).filter(Company.name == "Health Corp").first()
+        assert company.industry == "healthcare"
+
 
 class TestUpsertJob:
     def test_inserts_new_job(self, db):
