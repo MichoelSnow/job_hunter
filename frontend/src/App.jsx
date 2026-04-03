@@ -18,7 +18,7 @@ export default function App() {
           Companies
         </a>
         <a href="/settings" className="text-gray-900 hover:text-blue-600">
-          Settings
+          Filters
         </a>
       </nav>
       <main className="p-6">

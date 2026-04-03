@@ -214,6 +214,7 @@ def _load_companies_for_scrape() -> list[dict]:
         companies: list[dict] = []
         for row in rows:
             merged = {
+                "id": row.id,
                 "name": row.name,
                 "industry": row.industry,
                 # DB is authoritative for user-editable scrape fields.
@@ -301,6 +302,8 @@ def run_company_scrape() -> tuple[list[dict], dict[tuple[str, str], set[str]]]:
       - observed external_ids per (company_name, source) for successful scrapes
     """
     from app.services.scraper import get_scraper
+    from app.db.session import SessionLocal
+    from app.models.company import Company
 
     enabled, skipped = get_scrape_targets()
     if skipped:
@@ -317,23 +320,42 @@ def run_company_scrape() -> tuple[list[dict], dict[tuple[str, str], set[str]]]:
     seen_ids: set[str] = set()
     observed_external_ids: dict[tuple[str, str], set[str]] = {}
 
-    for i, company in enumerate(enabled, 1):
-        name = company.get("name", "unknown")
-        _set_status(step=f"Scraping {name} ({i}/{len(enabled)})")
-        scraper = get_scraper(company)
-        jobs = scraper.fetch_jobs()
-        if scraper.last_fetch_succeeded:
-            key = (name, _source_for_company(company))
-            observed_external_ids[key] = {
-                job.get("external_id", "")
-                for job in jobs
-                if job.get("external_id")
-            }
-        for job in jobs:
-            ext_id = job.get("external_id", "")
-            if ext_id and ext_id not in seen_ids:
-                seen_ids.add(ext_id)
-                all_jobs.append(job)
+    db = SessionLocal()
+    try:
+        for i, company in enumerate(enabled, 1):
+            name = company.get("name", "unknown")
+            _set_status(step=f"Scraping {name} ({i}/{len(enabled)})")
+            scraper = get_scraper(company)
+            jobs = scraper.fetch_jobs()
+
+            company_id = company.get("id")
+            if company_id:
+                company_row = db.get(Company, company_id)
+                if company_row:
+                    company_row.last_scraped_at = datetime.utcnow()
+                    if scraper.last_fetch_succeeded:
+                        company_row.scrape_last_status = "success"
+                        company_row.scrape_last_error = None
+                    else:
+                        company_row.scrape_last_status = "error"
+                        company_row.scrape_last_error = scraper.last_error
+                    db.add(company_row)
+
+            if scraper.last_fetch_succeeded:
+                key = (name, _source_for_company(company))
+                observed_external_ids[key] = {
+                    job.get("external_id", "")
+                    for job in jobs
+                    if job.get("external_id")
+                }
+            for job in jobs:
+                ext_id = job.get("external_id", "")
+                if ext_id and ext_id not in seen_ids:
+                    seen_ids.add(ext_id)
+                    all_jobs.append(job)
+        db.commit()
+    finally:
+        db.close()
 
     logger.info("Company scrape complete: %d unique jobs from %d companies", len(all_jobs), len(enabled))
     return all_jobs, observed_external_ids
@@ -374,9 +396,9 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
         try:
             user_settings = get_or_create_user_settings(settings_db)
             search_queries = user_settings.search_queries or []
-            filter_locations = user_settings.filter_locations or []
+            filter_location_query = user_settings.filter_location_query or ""
             exclude_remote = user_settings.filter_exclude_remote
-            title_keywords = user_settings.filter_title_keywords or []
+            title_query = user_settings.filter_title_query or ""
             target_salary = user_settings.filter_target_salary
             include_missing_salary = user_settings.filter_include_missing_salary
         finally:
@@ -408,9 +430,9 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
 
         _set_status(step="Applying user filters...")
         filter_engine = JobFilter(
-            allowed_locations=filter_locations,
+            allowed_location_query=filter_location_query,
             exclude_remote=exclude_remote,
-            title_keywords=title_keywords,
+            title_query=title_query,
             target_salary=target_salary,
             include_missing_salary=include_missing_salary,
         )

@@ -1,22 +1,13 @@
 import pytest
 
-from app.services.job_filter import JobFilter
+from app.services.job_filter import JobFilter, parse_boolean_query
 
 
 @pytest.fixture
 def job_filter() -> JobFilter:
     return JobFilter(
-        allowed_locations=["New York, NY"],
-        title_keywords=[
-            "director",
-            "vp",
-            "vice president",
-            "head of",
-            "chief",
-            "lead",
-            "manager",
-            "principal",
-        ],
+        allowed_location_query='"new york" OR brooklyn OR manhattan',
+        title_query='director OR vp OR "vice president" OR "head of" OR chief OR lead OR manager OR principal',
     )
 
 
@@ -45,7 +36,7 @@ class TestLocationFilter:
         assert not job_filter._passes_location(_make_job(location=""))
 
     def test_passes_when_no_location_filters_configured(self):
-        filter_no_location = JobFilter(allowed_locations=[])
+        filter_no_location = JobFilter(allowed_location_query="")
         assert filter_no_location._passes_location(_make_job(location="San Francisco, CA"))
 
 
@@ -67,7 +58,7 @@ class TestWorkArrangementFilter:
         assert not job_filter._passes_work_arrangement(job)
 
     def test_remote_allowed_when_toggle_disabled(self):
-        filter_with_remote = JobFilter(allowed_locations=["New York, NY"], exclude_remote=False)
+        filter_with_remote = JobFilter(allowed_location_query='"new york"', exclude_remote=False)
         assert filter_with_remote._passes_work_arrangement(_make_job(work_arrangement="remote"))
 
 
@@ -88,8 +79,24 @@ class TestRoleLevelFilter:
         assert not job_filter._passes_role_level(_make_job(title="Data Analyst"))
 
     def test_role_filter_can_be_disabled(self):
-        role_disabled = JobFilter(allowed_locations=["New York, NY"], title_keywords=[])
+        role_disabled = JobFilter(allowed_location_query='"new york"', title_query="")
         assert role_disabled._passes_role_level(_make_job(title="Data Analyst"))
+
+    def test_supports_boolean_groups(self):
+        grouped = JobFilter(
+            title_query='(director OR vp) AND (data OR analytics)',
+            allowed_location_query='"new york"',
+        )
+        assert grouped._passes_role_level(_make_job(title="VP, Data Platforms"))
+        assert not grouped._passes_role_level(_make_job(title="VP, Finance"))
+
+    def test_supports_not_operator(self):
+        with_not = JobFilter(
+            title_query='director AND NOT intern',
+            allowed_location_query='"new york"',
+        )
+        assert with_not._passes_role_level(_make_job(title="Director of Data"))
+        assert not with_not._passes_role_level(_make_job(title="Director Intern"))
 
 
 class TestApplyAll:
@@ -123,3 +130,9 @@ class TestSalaryFilter:
         job = _make_job(salary_min=None, salary_max=None)
         assert include_missing._passes_salary(job)
         assert not exclude_missing._passes_salary(job)
+
+
+class TestBooleanQueryParser:
+    def test_invalid_query_raises(self):
+        with pytest.raises(ValueError):
+            parse_boolean_query('(director OR')

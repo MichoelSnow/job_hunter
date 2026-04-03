@@ -210,6 +210,7 @@ export default function CompaniesPage() {
           <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
             <tr>
               <th className="text-left px-4 py-2">Name</th>
+              <th className="text-left px-4 py-2">Jobs</th>
               <th className="text-left px-4 py-2">ATS Type</th>
               <th className="text-left px-4 py-2">ATS ID</th>
               <th className="px-4 py-2"></th>
@@ -218,11 +219,11 @@ export default function CompaniesPage() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-gray-400">Loading...</td>
+                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">Loading...</td>
               </tr>
             ) : companies.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-gray-400">No companies yet.</td>
+                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">No companies yet.</td>
               </tr>
             ) : (
               companies.map((company) => (
@@ -253,6 +254,19 @@ export default function CompaniesPage() {
                       </a>
                     ) : (
                       company.name
+                    )}
+                  </td>
+                  <td className="px-4 py-2 text-gray-700">
+                    {company.scrape_error ? (
+                      <span
+                        className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-100 text-red-700 font-semibold"
+                        title={company.scrape_last_error || "Scrape failed on last attempt"}
+                        aria-label="Scrape error"
+                      >
+                        !
+                      </span>
+                    ) : (
+                      company.scraped_job_count ?? 0
                     )}
                   </td>
                   <td className="px-4 py-2 text-gray-600">

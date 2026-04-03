@@ -1,6 +1,7 @@
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -16,11 +17,33 @@ router = APIRouter(prefix="/companies", tags=["companies"])
 def list_companies(
     priority_only: bool = False,
     db: Session = Depends(get_db),
-) -> list[Company]:
+) -> list[CompanyResponse]:
     query = db.query(Company)
     if priority_only:
         query = query.filter(Company.is_priority == True)  # noqa: E712
-    return query.order_by(Company.name).all()
+    companies = query.order_by(Company.name).all()
+
+    scraped_sources = ("greenhouse", "lever", "workday", "ashby", "html_scraper")
+    counts = (
+        db.query(Job.company_id, func.count(Job.id))
+        .filter(Job.company_id.isnot(None), Job.source.in_(scraped_sources))
+        .group_by(Job.company_id)
+        .all()
+    )
+    count_by_company_id = {company_id: total for company_id, total in counts}
+
+    return [
+        CompanyResponse.model_validate(
+            company,
+            from_attributes=True,
+        ).model_copy(
+            update={
+                "scraped_job_count": int(count_by_company_id.get(company.id, 0)),
+                "scrape_error": company.scrape_last_status == "error",
+            }
+        )
+        for company in companies
+    ]
 
 
 @router.post("", response_model=CompanyResponse, status_code=201)

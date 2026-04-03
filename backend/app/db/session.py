@@ -100,6 +100,12 @@ def _ensure_sqlite_company_columns() -> None:
         if "html_selectors" not in columns:
             logger.info("Adding missing companies.html_selectors column")
             conn.exec_driver_sql("ALTER TABLE companies ADD COLUMN html_selectors JSON")
+        if "scrape_last_status" not in columns:
+            logger.info("Adding missing companies.scrape_last_status column")
+            conn.exec_driver_sql("ALTER TABLE companies ADD COLUMN scrape_last_status VARCHAR(20)")
+        if "scrape_last_error" not in columns:
+            logger.info("Adding missing companies.scrape_last_error column")
+            conn.exec_driver_sql("ALTER TABLE companies ADD COLUMN scrape_last_error TEXT")
 
 
 def _ensure_sqlite_user_settings_columns() -> None:
@@ -116,12 +122,6 @@ def _ensure_sqlite_user_settings_columns() -> None:
             row[1]
             for row in conn.exec_driver_sql("PRAGMA table_info(user_settings)").fetchall()
         }
-        if "filter_locations" not in columns:
-            logger.info("Adding missing user_settings.filter_locations column")
-            conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN filter_locations JSON")
-        if "filter_title_keywords" not in columns:
-            logger.info("Adding missing user_settings.filter_title_keywords column")
-            conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN filter_title_keywords JSON")
         if "filter_target_salary" not in columns:
             logger.info("Adding missing user_settings.filter_target_salary column")
             conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN filter_target_salary INTEGER")
@@ -130,29 +130,78 @@ def _ensure_sqlite_user_settings_columns() -> None:
             conn.exec_driver_sql(
                 "ALTER TABLE user_settings ADD COLUMN filter_include_missing_salary BOOLEAN DEFAULT 1"
             )
-        conn.exec_driver_sql(
-            "UPDATE user_settings SET filter_locations = search_locations "
-            "WHERE filter_locations IS NULL"
-        )
-        default_keywords_json = json.dumps(
-            ["director", "vp", "vice president", "head of", "chief", "lead", "manager", "principal"]
-        )
-        if "filter_require_leadership" in columns:
-            conn.exec_driver_sql(
-                "UPDATE user_settings SET filter_title_keywords = ? "
-                "WHERE filter_title_keywords IS NULL AND filter_require_leadership = 1",
-                (default_keywords_json,),
-            )
-            conn.exec_driver_sql(
-                "UPDATE user_settings SET filter_title_keywords = '[]' "
-                "WHERE filter_title_keywords IS NULL AND filter_require_leadership = 0"
-            )
-        conn.exec_driver_sql(
-            "UPDATE user_settings SET filter_title_keywords = ? "
-            "WHERE filter_title_keywords IS NULL",
-            (default_keywords_json,),
-        )
+        if "filter_location_query" not in columns:
+            logger.info("Adding missing user_settings.filter_location_query column")
+            conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN filter_location_query TEXT DEFAULT ''")
+        if "filter_title_query" not in columns:
+            logger.info("Adding missing user_settings.filter_title_query column")
+            conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN filter_title_query TEXT DEFAULT ''")
         conn.exec_driver_sql(
             "UPDATE user_settings SET filter_include_missing_salary = 1 "
             "WHERE filter_include_missing_salary IS NULL"
         )
+
+        def to_or_query(values: list[str]) -> str:
+            cleaned = [v.strip() for v in values if isinstance(v, str) and v.strip()]
+            if not cleaned:
+                return ""
+            quoted = [f"\"{v.replace('\\', '\\\\').replace('\"', '\\\"')}\"" for v in cleaned]
+            if len(quoted) == 1:
+                return quoted[0]
+            return f"({' OR '.join(quoted)})"
+
+        has_filter_locations = "filter_locations" in columns
+        has_filter_title_keywords = "filter_title_keywords" in columns
+        select_columns = [
+            "id",
+            "filter_location_query",
+            "filter_title_query",
+            "search_locations",
+            "filter_locations" if has_filter_locations else "NULL AS filter_locations",
+            "filter_title_keywords" if has_filter_title_keywords else "NULL AS filter_title_keywords",
+        ]
+        rows = conn.exec_driver_sql(
+            f"SELECT {', '.join(select_columns)} FROM user_settings"
+        ).fetchall()
+        for row in rows:
+            row_id = row[0]
+            filter_location_query = row[1]
+            filter_title_query = row[2]
+            search_locations_json = row[3]
+            filter_locations_json = row[4]
+            filter_title_keywords_json = row[5]
+
+            if not filter_location_query:
+                locations = []
+                for raw_json in (filter_locations_json, search_locations_json):
+                    if not raw_json:
+                        continue
+                    try:
+                        parsed = json.loads(raw_json) if isinstance(raw_json, str) else raw_json
+                    except json.JSONDecodeError:
+                        parsed = []
+                    if isinstance(parsed, list) and parsed:
+                        locations = parsed
+                        break
+                conn.exec_driver_sql(
+                    "UPDATE user_settings SET filter_location_query = ? WHERE id = ?",
+                    (to_or_query(locations), row_id),
+                )
+
+            if not filter_title_query:
+                title_keywords = []
+                if filter_title_keywords_json:
+                    try:
+                        parsed = (
+                            json.loads(filter_title_keywords_json)
+                            if isinstance(filter_title_keywords_json, str)
+                            else filter_title_keywords_json
+                        )
+                    except json.JSONDecodeError:
+                        parsed = []
+                    if isinstance(parsed, list):
+                        title_keywords = parsed
+                conn.exec_driver_sql(
+                    "UPDATE user_settings SET filter_title_query = ? WHERE id = ?",
+                    (to_or_query(title_keywords), row_id),
+                )

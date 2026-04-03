@@ -18,8 +18,8 @@ function DiscoverySettingsSection() {
   const queryClient = useQueryClient();
   const [form, setForm] = useState({
     search_queries_text: "",
-    filter_locations_text: "",
-    filter_title_keywords_text: "",
+    filter_location_query: "",
+    filter_title_query: "",
     filter_exclude_remote: true,
     filter_target_salary_text: "",
     filter_include_missing_salary: true,
@@ -53,8 +53,8 @@ function DiscoverySettingsSection() {
     if (!data) return;
     setForm({
       search_queries_text: (data.search_queries || []).join("\n"),
-      filter_locations_text: (data.filter_locations || []).join("\n"),
-      filter_title_keywords_text: (data.filter_title_keywords || []).join("\n"),
+      filter_location_query: data.filter_location_query || "",
+      filter_title_query: data.filter_title_query || "",
       filter_exclude_remote: !!data.filter_exclude_remote,
       filter_target_salary_text:
         data.filter_target_salary == null ? "" : String(data.filter_target_salary),
@@ -64,20 +64,6 @@ function DiscoverySettingsSection() {
 
   function parsedQueries() {
     return form.search_queries_text
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-  }
-
-  function parsedFilterLocations() {
-    return form.filter_locations_text
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean);
-  }
-
-  function parsedFilterTitleKeywords() {
-    return form.filter_title_keywords_text
       .split("\n")
       .map((line) => line.trim())
       .filter(Boolean);
@@ -106,8 +92,8 @@ function DiscoverySettingsSection() {
               e.preventDefault();
               saveMutation.mutate({
                 search_queries: parsedQueries(),
-                filter_locations: parsedFilterLocations(),
-                filter_title_keywords: parsedFilterTitleKeywords(),
+                filter_location_query: form.filter_location_query,
+                filter_title_query: form.filter_title_query,
                 filter_exclude_remote: form.filter_exclude_remote,
                 filter_target_salary: parsedTargetSalary(),
                 filter_include_missing_salary: form.filter_include_missing_salary,
@@ -146,7 +132,7 @@ function DiscoverySettingsSection() {
       </div>
 
       <div className="bg-white rounded border p-4">
-        <h2 className="font-semibold text-gray-800 mb-1 text-sm">Post-Collection Rules</h2>
+        <h2 className="font-semibold text-gray-800 mb-1 text-sm">Job Filters</h2>
         <div className="text-xs text-gray-500 mb-3">
           These rules affect visibility after jobs are collected from APIs and scrapers.
         </div>
@@ -158,8 +144,8 @@ function DiscoverySettingsSection() {
               e.preventDefault();
               saveMutation.mutate({
                 search_queries: parsedQueries(),
-                filter_locations: parsedFilterLocations(),
-                filter_title_keywords: parsedFilterTitleKeywords(),
+                filter_location_query: form.filter_location_query,
+                filter_title_query: form.filter_title_query,
                 filter_exclude_remote: form.filter_exclude_remote,
                 filter_target_salary: parsedTargetSalary(),
                 filter_include_missing_salary: form.filter_include_missing_salary,
@@ -171,14 +157,18 @@ function DiscoverySettingsSection() {
           >
             <div>
               <label className="block text-xs text-gray-500 mb-1">
-                Allowed locations (one per line)
+                Allowed locations query (Boolean)
               </label>
               <textarea
                 rows={3}
-                value={form.filter_locations_text}
-                onChange={(e) => setForm((d) => ({ ...d, filter_locations_text: e.target.value }))}
+                value={form.filter_location_query}
+                onChange={(e) => setForm((d) => ({ ...d, filter_location_query: e.target.value }))}
                 className="border rounded px-2 py-1 text-sm w-full"
+                placeholder='e.g. ("new york" OR brooklyn OR manhattan) AND NOT "san francisco"'
               />
+              <div className="text-xs text-gray-400 mt-1">
+                Supports AND, OR, NOT, parentheses, and quoted phrases.
+              </div>
             </div>
             <div className="flex flex-wrap gap-4">
               <label className="inline-flex items-center gap-2 text-sm text-gray-700">
@@ -215,13 +205,14 @@ function DiscoverySettingsSection() {
             </div>
             <div>
               <label className="block text-xs text-gray-500 mb-1">
-                Job title keywords (one per line)
+                Job title query (Boolean)
               </label>
               <textarea
                 rows={4}
-                value={form.filter_title_keywords_text}
-                onChange={(e) => setForm((d) => ({ ...d, filter_title_keywords_text: e.target.value }))}
+                value={form.filter_title_query}
+                onChange={(e) => setForm((d) => ({ ...d, filter_title_query: e.target.value }))}
                 className="border rounded px-2 py-1 text-sm w-full"
+                placeholder='e.g. (director OR vp OR "head of") AND (data OR analytics)'
               />
             </div>
             {filtersError ? (
@@ -235,7 +226,7 @@ function DiscoverySettingsSection() {
                 disabled={saveMutation.isPending}
                 className="rounded bg-blue-600 text-white px-3 py-1.5 text-sm hover:bg-blue-700 disabled:opacity-50"
               >
-                Save Post-Collection Rules
+                Save Job Filters
               </button>
               {filtersSaved ? <span className="text-xs text-green-700">Saved</span> : null}
             </div>
@@ -439,12 +430,12 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6 max-w-3xl">
-      <h1 className="text-lg font-semibold text-gray-900">Settings</h1>
+      <h1 className="text-lg font-semibold text-gray-900">Filters</h1>
       <DiscoverySettingsSection />
 
       {/* Criteria */}
       <div className="bg-white rounded border p-4">
-        <h2 className="font-semibold text-gray-800 mb-3 text-sm">Post-Collection Rules: Match Criteria</h2>
+        <h2 className="font-semibold text-gray-800 mb-3 text-sm">Job Filters: Match Criteria</h2>
         <div className="mb-3 text-xs text-gray-500">
           Criteria are applied after jobs are collected and influence match scoring.
         </div>

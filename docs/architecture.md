@@ -111,6 +111,8 @@ For scraper-sourced jobs, if a role disappears from a successful scrape for that
 
 Scraper target settings are sourced from the `companies` DB table (edited via the Companies page), including Workday board/instance and HTML selectors.
 
+Each company row also stores scraper run health (`scrape_last_status`, `scrape_last_error`) so the Companies page can distinguish "0 jobs found" from "scrape failed". The Companies API returns `scraped_job_count` computed from persisted scraper-source jobs, independent of UI post-collection filters.
+
 ### DB Migrations
 Schema is recreated freely during Phases 0–5. Alembic will be added in Phase 6 once the schema stabilizes.
 
@@ -209,7 +211,9 @@ overall_score = (user_to_job_score × user_to_job_weight) + (job_to_user_score �
 
 ## Environment Variables (`.env`)
 
-Only secrets and environment-specific values belong in `.env`. Scoring weights stay in `settings.py`. Discovery queries/locations and hard filter toggles are user-managed via `/api/settings/discovery` and stored in the database.
+Only secrets and environment-specific values belong in `.env`. Scoring weights stay in `settings.py`. Discovery queries and post-collection filters are user-managed via `/api/settings/discovery` and stored in the database.
+
+For post-collection filtering, both title and location use boolean query strings (`filter_title_query`, `filter_location_query`) with `AND`/`OR`/`NOT`, parentheses, and quoted phrases.
 
 ```bash
 # Database

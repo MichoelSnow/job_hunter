@@ -272,12 +272,14 @@ class TestDiscoveryPipeline:
         assert job.description == "Hybrid role & cross-functional."
 
     def test_remote_jobs_filtered_out(self, db_session):
-        """Jobs marked as remote should be removed by JobFilter."""
+        """Jobs marked as remote should remain stored but be hidden by user filters."""
         data = _fake_jsearch_response(3)
         for job in data["data"]:
             job["job_is_remote"] = True
         self._run_discovery(db_session, jsearch_data=data, serply_data={"jobs": []})
-        assert db_session.query(Job).count() == 0
+        rows = db_session.query(Job).all()
+        assert len(rows) == 3
+        assert all(row.passes_user_filters is False for row in rows)
 
     def test_requirements_parsed_and_stored(self, db_session):
         """parse_and_store_requirements runs and stores JobRequirement rows."""
@@ -793,6 +795,64 @@ class TestCompanyScrape:
         skipped_map = {item["name"]: item["reason"] for item in skipped}
         assert skipped_map["Bad GH"] == "missing ats_id"
         assert skipped_map["Unknown"] == "missing or unsupported ats_type"
+
+    def test_run_company_scrape_persists_success_status(self, db_session):
+        from app.models.company import Company
+        from app.services.api_aggregator import run_company_scrape
+
+        company = Company(name="Scrape OK", ats_type="lever", ats_id="scrape-ok", scraper_enabled=True)
+        db_session.add(company)
+        db_session.commit()
+
+        class _SuccessScraper:
+            def __init__(self):
+                self.last_fetch_succeeded = True
+                self.last_error = None
+
+            def fetch_jobs(self):
+                return []
+
+        db_session.close = lambda: None
+        with patch("app.db.session.SessionLocal", return_value=db_session), \
+             patch("app.services.api_aggregator.get_scrape_targets", return_value=([{"id": company.id, "name": company.name, "ats_type": "lever"}], [])), \
+             patch("app.services.scraper.get_scraper", return_value=_SuccessScraper()):
+            run_company_scrape()
+
+        db_session.expire_all()
+        refreshed = db_session.get(Company, company.id)
+        assert refreshed is not None
+        assert refreshed.scrape_last_status == "success"
+        assert refreshed.scrape_last_error is None
+        assert refreshed.last_scraped_at is not None
+
+    def test_run_company_scrape_persists_error_status(self, db_session):
+        from app.models.company import Company
+        from app.services.api_aggregator import run_company_scrape
+
+        company = Company(name="Scrape Fail", ats_type="lever", ats_id="scrape-fail", scraper_enabled=True)
+        db_session.add(company)
+        db_session.commit()
+
+        class _FailScraper:
+            def __init__(self):
+                self.last_fetch_succeeded = False
+                self.last_error = "400 Client Error"
+
+            def fetch_jobs(self):
+                return []
+
+        db_session.close = lambda: None
+        with patch("app.db.session.SessionLocal", return_value=db_session), \
+             patch("app.services.api_aggregator.get_scrape_targets", return_value=([{"id": company.id, "name": company.name, "ats_type": "lever"}], [])), \
+             patch("app.services.scraper.get_scraper", return_value=_FailScraper()):
+            run_company_scrape()
+
+        db_session.expire_all()
+        refreshed = db_session.get(Company, company.id)
+        assert refreshed is not None
+        assert refreshed.scrape_last_status == "error"
+        assert refreshed.scrape_last_error == "400 Client Error"
+        assert refreshed.last_scraped_at is not None
 
     def test_skill_taxonomy_path_resolves(self):
         """Regression: TAXONOMY_PATH used parents[4] (wrong) instead of parents[3]."""

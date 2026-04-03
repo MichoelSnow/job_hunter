@@ -577,6 +577,74 @@ class TestCompaniesAPI:
         names = [company["name"] for company in post_delete.json()]
         assert "Delete Again" not in names
 
+    def test_list_companies_includes_scraped_job_count_independent_of_filters(self, client, db_session):
+        company = Company(name="Count Co")
+        db_session.add(company)
+        db_session.flush()
+        db_session.add_all(
+            [
+                Job(
+                    title="Visible Scraped",
+                    description="desc",
+                    location="NYC",
+                    work_arrangement="hybrid",
+                    application_url="https://example.com/visible",
+                    source="greenhouse",
+                    discovered_date=date(2026, 4, 1),
+                    company_id=company.id,
+                    is_active=True,
+                    passes_user_filters=True,
+                ),
+                Job(
+                    title="Filtered Scraped",
+                    description="desc",
+                    location="Remote",
+                    work_arrangement="remote",
+                    application_url="https://example.com/filtered",
+                    source="lever",
+                    discovered_date=date(2026, 4, 1),
+                    company_id=company.id,
+                    is_active=False,
+                    passes_user_filters=False,
+                ),
+                Job(
+                    title="API Job",
+                    description="desc",
+                    location="NYC",
+                    work_arrangement="hybrid",
+                    application_url="https://example.com/api",
+                    source="jsearch_api",
+                    discovered_date=date(2026, 4, 1),
+                    company_id=company.id,
+                ),
+            ]
+        )
+        db_session.commit()
+
+        resp = client.get("/api/companies")
+        assert resp.status_code == 200
+        payload = next((item for item in resp.json() if item["name"] == "Count Co"), None)
+        assert payload is not None
+        assert payload["scraped_job_count"] == 2
+        assert payload["scrape_error"] is False
+
+    def test_list_companies_marks_scrape_error(self, client, db_session):
+        company = Company(
+            name="Error Co",
+            scrape_last_status="error",
+            scrape_last_error="400 Client Error",
+        )
+        db_session.add(company)
+        db_session.commit()
+
+        resp = client.get("/api/companies")
+        assert resp.status_code == 200
+        payload = next((item for item in resp.json() if item["name"] == "Error Co"), None)
+        assert payload is not None
+        assert payload["scrape_error"] is True
+        assert payload["scraped_job_count"] == 0
+        assert payload["scrape_last_error"] == "400 Client Error"
+
 
 # ---------------------------------------------------------------------------
 # Criteria
@@ -650,8 +718,8 @@ class TestDiscoverySettingsAPI:
         assert resp.status_code == 200
         body = resp.json()
         assert isinstance(body["search_queries"], list)
-        assert isinstance(body["filter_locations"], list)
-        assert isinstance(body["filter_title_keywords"], list)
+        assert isinstance(body["filter_location_query"], str)
+        assert isinstance(body["filter_title_query"], str)
         assert body["filter_exclude_remote"] is True
         assert body["filter_target_salary"] is None
         assert body["filter_include_missing_salary"] is True
@@ -659,8 +727,8 @@ class TestDiscoverySettingsAPI:
     def test_update_discovery_settings(self, client):
         payload = {
             "search_queries": ["director data healthcare", "vp analytics healthtech"],
-            "filter_locations": ["New York, NY", "Brooklyn, NY"],
-            "filter_title_keywords": ["director", "vp", "head of"],
+            "filter_location_query": '("new york" OR brooklyn)',
+            "filter_title_query": '(director OR vp OR "head of")',
             "filter_exclude_remote": False,
             "filter_target_salary": 190000,
             "filter_include_missing_salary": False,
@@ -669,8 +737,8 @@ class TestDiscoverySettingsAPI:
         assert resp.status_code == 200
         body = resp.json()
         assert body["search_queries"] == payload["search_queries"]
-        assert body["filter_locations"] == payload["filter_locations"]
-        assert body["filter_title_keywords"] == payload["filter_title_keywords"]
+        assert body["filter_location_query"] == payload["filter_location_query"]
+        assert body["filter_title_query"] == payload["filter_title_query"]
         assert body["filter_exclude_remote"] is False
         assert body["filter_target_salary"] == 190000
         assert body["filter_include_missing_salary"] is False
@@ -701,8 +769,8 @@ class TestDiscoverySettingsAPI:
 
         payload = {
             "search_queries": ["director data healthcare"],
-            "filter_locations": ["New York, NY"],
-            "filter_title_keywords": ["director"],
+            "filter_location_query": '"new york"',
+            "filter_title_query": "director",
             "filter_exclude_remote": True,
             "filter_target_salary": None,
             "filter_include_missing_salary": True,
@@ -770,8 +838,8 @@ class TestDiscoverySettingsAPI:
 
         settings_payload = {
             "search_queries": ["director data healthcare"],
-            "filter_locations": ["New York, NY"],
-            "filter_title_keywords": ["director"],
+            "filter_location_query": '"new york"',
+            "filter_title_query": "director",
             "filter_exclude_remote": False,
             "filter_target_salary": 190000,
             "filter_include_missing_salary": False,
@@ -786,6 +854,19 @@ class TestDiscoverySettingsAPI:
         assert "Director of Analytics" in titles
         assert "Director of Reporting" not in titles
         assert "Director of BI" not in titles
+
+    def test_update_discovery_settings_rejects_invalid_boolean_query(self, client):
+        payload = {
+            "search_queries": ["director data healthcare"],
+            "filter_location_query": '(new york OR',
+            "filter_title_query": "director",
+            "filter_exclude_remote": True,
+            "filter_target_salary": None,
+            "filter_include_missing_salary": True,
+        }
+        resp = client.put("/api/settings/discovery", json=payload)
+        assert resp.status_code == 422
+        assert "Invalid boolean query" in resp.json()["detail"]
 
 
 # ---------------------------------------------------------------------------

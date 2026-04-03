@@ -33,6 +33,8 @@ class Company(Base):
     is_priority: Mapped[bool] = mapped_column(Boolean, default=False)
     scraper_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_scraped_at: Mapped[datetime | None] = mapped_column(DateTime)
+    scrape_last_status: Mapped[str | None] = mapped_column(String(20))
+    scrape_last_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, default=func.now(), onupdate=func.now()
