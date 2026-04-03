@@ -43,3 +43,7 @@ class TestHtmlToText:
     def test_html_to_text_strips_tags(self):
         text = html_to_text("<p>Hybrid role</p><ul><li>Python</li></ul>")
         assert text == "Hybrid role Python"
+
+    def test_html_to_text_unescapes_encoded_html_then_strips_tags(self):
+        text = html_to_text("&lt;div&gt;Lead analytics &amp;amp; reporting&lt;/div&gt;")
+        assert text == "Lead analytics & reporting"

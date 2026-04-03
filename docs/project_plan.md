@@ -783,7 +783,8 @@ class ScoringEngine:
 #### Jobs
 - `GET /api/jobs` - List all jobs with filters and pagination
 - `GET /api/jobs/{job_id}` - Get single job details
-- `POST /api/jobs/refresh` - Trigger job discovery process
+- `POST /api/jobs/refresh/apis` - Trigger paid API discovery (JSearch + Serply)
+- `POST /api/jobs/refresh/scrapers` - Trigger scraper discovery (Greenhouse/Lever/Workday)
 - `PUT /api/jobs/{job_id}/score` - Recalculate scores for a job
 
 #### Applications
@@ -847,11 +848,17 @@ async def get_jobs(
     
     return jobs
 
-@app.post("/api/jobs/refresh")
-async def refresh_jobs(background_tasks: BackgroundTasks):
-    """Trigger job discovery process in background."""
-    background_tasks.add_task(run_job_discovery)
-    return {"status": "Job discovery started"}
+@app.post("/api/jobs/refresh/apis")
+async def refresh_api_jobs(background_tasks: BackgroundTasks):
+    """Trigger paid API discovery in background."""
+    background_tasks.add_task(run_job_discovery_api_only)
+    return {"status": "API job discovery started"}
+
+@app.post("/api/jobs/refresh/scrapers")
+async def refresh_scraper_jobs(background_tasks: BackgroundTasks):
+    """Trigger scraper discovery in background."""
+    background_tasks.add_task(run_job_discovery_scrapers_only)
+    return {"status": "Scraper job discovery started"}
 ```
 
 ### Component 6: Frontend Dashboard

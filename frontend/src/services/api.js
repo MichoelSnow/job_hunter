@@ -8,9 +8,12 @@ const api = axios.create({
 // Jobs
 export const getJobs = (params) => api.get("/jobs", { params }).then((r) => r.data);
 export const getJob = (id) => api.get(`/jobs/${id}`).then((r) => r.data);
-export const refreshJobs = () => api.post("/jobs/refresh").then((r) => r.data);
+export const refreshApiJobs = () => api.post("/jobs/refresh/apis").then((r) => r.data);
+export const refreshScrapedJobs = () => api.post("/jobs/refresh/scrapers").then((r) => r.data);
 export const getRefreshStatus = () => api.get("/jobs/refresh/status").then((r) => r.data);
 export const hideJob = (id) => api.put(`/jobs/${id}/hide`).then((r) => r.data);
+export const unhideJob = (id) => api.put(`/jobs/${id}/unhide`).then((r) => r.data);
+export const getJobLocations = (params) => api.get("/jobs/filters/locations", { params }).then((r) => r.data);
 
 // Applications
 export const getApplications = () => api.get("/applications").then((r) => r.data);
@@ -36,3 +39,4 @@ export const deleteCriterion = (id) => api.delete(`/criteria/${id}`).then((r) =>
 // Analytics
 export const getDashboardStats = () => api.get("/analytics/dashboard").then((r) => r.data);
 export const getApiUsage = () => api.get("/analytics/api-usage").then((r) => r.data);
+export const getUserProfile = () => api.get("/user/profile").then((r) => r.data);

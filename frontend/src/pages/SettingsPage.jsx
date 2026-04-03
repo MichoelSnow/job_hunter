@@ -5,11 +5,50 @@ import {
   deleteCriterion,
   getApiUsage,
   getCriteria,
+  getUserProfile,
   updateCriterion,
 } from "../services/api";
 import axios from "axios";
 
 const CRITERION_TYPES = ["industry", "location", "min_salary", "role_level", "company_size", "other"];
+
+function ProfileSection() {
+  const { data: profile, isLoading } = useQuery({
+    queryKey: ["user-profile"],
+    queryFn: getUserProfile,
+  });
+
+  const user = profile?.user ?? {};
+  const parsedResume = profile?.parsed_resume ?? {};
+
+  return (
+    <div className="bg-white rounded border p-4">
+      <h2 className="font-semibold text-gray-800 mb-3 text-sm">Profile</h2>
+      {isLoading ? (
+        <div className="text-gray-400 text-sm">Loading...</div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3 text-sm text-gray-700">
+          <div>
+            <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Name</div>
+            <div>{user.name ?? "—"}</div>
+          </div>
+          <div>
+            <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Current title</div>
+            <div>{profile?.current_title ?? "—"}</div>
+          </div>
+          <div>
+            <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Resume path</div>
+            <div>{user.resume_file_path ?? "—"}</div>
+          </div>
+          <div>
+            <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Parsed skills</div>
+            <div>{(parsedResume.skills || []).length}</div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ResumeUploadSection() {
   const fileRef = useRef(null);
@@ -171,6 +210,9 @@ export default function SettingsPage() {
       {/* Criteria */}
       <div className="bg-white rounded border p-4">
         <h2 className="font-semibold text-gray-800 mb-3 text-sm">Job Criteria</h2>
+        <div className="mb-3 text-xs text-gray-500">
+          Criteria are stored in the database and start empty until you add them here.
+        </div>
 
         {/* Add form */}
         <form
@@ -297,6 +339,7 @@ export default function SettingsPage() {
         </table>
       </div>
 
+      <ProfileSection />
       <ResumeUploadSection />
       <ApiUsageSection />
     </div>

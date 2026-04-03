@@ -47,7 +47,7 @@ Tracks build progress phase by phase. Items marked `[x]` are complete; `[~]` mea
 - [x] Wire `run_job_discovery()` end-to-end
   - [x] fetch (APIs + scrapers) → filter → upsert pipeline
   - [x] Track API usage in `api_usage_tracking` table
-- [ ] Smoke test: trigger `/api/jobs/refresh` and verify jobs appear in DB
+- [ ] Smoke test: trigger `/api/jobs/refresh/apis` and `/api/jobs/refresh/scrapers`, then verify jobs appear in DB
 
 ---
 
@@ -81,7 +81,8 @@ Tracks build progress phase by phase. Items marked `[x]` are complete; `[~]` mea
 - [x] Job endpoints
   - [x] `GET /api/jobs` — list with filters and pagination
   - [x] `GET /api/jobs/{id}` — single job
-  - [x] `POST /api/jobs/refresh` — trigger discovery
+  - [x] `POST /api/jobs/refresh/apis` — trigger paid API discovery
+  - [x] `POST /api/jobs/refresh/scrapers` — trigger scraper discovery
   - [x] `PUT /api/jobs/{id}/hide`
   - [x] `PUT /api/jobs/{id}/score` — rescore stub
 - [x] Application endpoints

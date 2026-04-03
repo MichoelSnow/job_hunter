@@ -111,7 +111,9 @@ This means no concept of "search sessions" at the schema level — `discovered_d
 Schema is recreated freely during Phases 0–5. Alembic will be added in Phase 6 once the schema stabilizes.
 
 ### Job Refresh: Manual Trigger Only
-`POST /api/jobs/refresh` triggers discovery as a FastAPI `BackgroundTask`. No automated scheduler is in scope. Weekly execution cadence is a cost-estimation guideline, not an automated schedule.
+`POST /api/jobs/refresh/apis` triggers paid API discovery (JSearch + Serply) as a FastAPI `BackgroundTask`.
+`POST /api/jobs/refresh/scrapers` triggers scraper discovery (Greenhouse/Lever/Workday).
+No automated scheduler is in scope. Weekly execution cadence is a cost-estimation guideline, not an automated schedule.
 
 ### User Criteria: DB Only
 Job search criteria are stored in the `user_criteria` table and managed exclusively through the Settings UI. There is no parallel YAML file for criteria — the DB is the single source of truth.

@@ -130,9 +130,14 @@ export default function CompaniesPage() {
                         placeholder="https://..."
                         className="border rounded px-1 py-0.5 text-sm w-40"
                       />
-                    ) : company.website_url ? (
-                      <a href={company.website_url} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
-                        {company.website_url}
+                    ) : (company.website_url || company.careers_page_url) ? (
+                      <a
+                        href={company.website_url || company.careers_page_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-blue-600 hover:underline"
+                      >
+                        {company.website_url || company.careers_page_url}
                       </a>
                     ) : (
                       "—"

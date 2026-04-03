@@ -1,5 +1,6 @@
 """Helpers for normalizing cross-source job fields."""
 
+import html
 import re
 
 
@@ -31,8 +32,19 @@ def infer_work_arrangement(
 def html_to_text(value: str | None) -> str:
     if not value:
         return ""
-    # Greenhouse content is HTML; convert to plain text for matching and display.
-    text = re.sub(r"<[^>]+>", " ", value)
+    text = str(value)
+
+    # Some sources return doubly-escaped HTML (e.g. "&lt;div&gt;...").
+    # Unescape a few times to normalize common patterns without looping forever.
+    for _ in range(3):
+        unescaped = html.unescape(text)
+        if unescaped == text:
+            break
+        text = unescaped
+
+    # Convert HTML-ish formatting to plain text for display and matching.
+    text = re.sub(r"(?i)<\s*br\s*/?\s*>", " ", text)
+    text = re.sub(r"<[^>]+>", " ", text)
     return re.sub(r"\s+", " ", text).strip()
 
 

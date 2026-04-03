@@ -10,6 +10,24 @@ from app.models.job import Job
 # ---------------------------------------------------------------------------
 
 class TestJobsAPI:
+    @staticmethod
+    def _reset_discovery_status() -> None:
+        from app.services.api_aggregator import discovery_status
+
+        discovery_status.update(
+            {
+                "status": "idle",
+                "mode": None,
+                "step": None,
+                "started_at": None,
+                "completed_at": None,
+                "inserted": None,
+                "updated": None,
+                "filtered_out": None,
+                "error": None,
+            }
+        )
+
     def test_list_jobs_returns_empty_list(self, client):
         resp = client.get("/api/jobs")
         assert resp.status_code == 200
@@ -34,6 +52,24 @@ class TestJobsAPI:
         assert resp.json()["id"] == job_id
         assert "company_name" in resp.json()
 
+    def test_get_job_sanitizes_html_encoded_description(self, client, db_session):
+        job = Job(
+            title="Director of Data",
+            description="&lt;div&gt;Lead analytics &amp;amp; strategy&lt;/div&gt;",
+            location="Manhattan, NY",
+            work_arrangement="hybrid",
+            application_url="https://example.com/apply",
+            source="manual",
+            discovered_date=date(2026, 4, 1),
+        )
+        db_session.add(job)
+        db_session.commit()
+        db_session.refresh(job)
+
+        resp = client.get(f"/api/jobs/{job.id}")
+        assert resp.status_code == 200
+        assert resp.json()["description"] == "Lead analytics & strategy"
+
     def test_hide_job(self, client_with_job):
         client, job_id = client_with_job
         resp = client.put(f"/api/jobs/{job_id}/hide")
@@ -42,13 +78,32 @@ class TestJobsAPI:
         list_resp = client.get("/api/jobs")
         assert list_resp.json()["total"] == 0
 
+    def test_unhide_job(self, client_with_job):
+        client, job_id = client_with_job
+        hide_resp = client.put(f"/api/jobs/{job_id}/hide")
+        assert hide_resp.status_code == 200
+        unhide_resp = client.put(f"/api/jobs/{job_id}/unhide")
+        assert unhide_resp.status_code == 200
+        list_resp = client.get("/api/jobs")
+        assert list_resp.json()["total"] == 1
+
     def test_hide_job_not_found(self, client):
         resp = client.put("/api/jobs/999/hide")
+        assert resp.status_code == 404
+
+    def test_unhide_job_not_found(self, client):
+        resp = client.put("/api/jobs/999/unhide")
         assert resp.status_code == 404
 
     def test_score_job_not_found(self, client):
         resp = client.put("/api/jobs/999/score")
         assert resp.status_code == 404
+
+    def test_locations_returns_seeded_location(self, client_with_job):
+        client, _ = client_with_job
+        resp = client.get("/api/jobs/filters/locations")
+        assert resp.status_code == 200
+        assert "Manhattan, NY" in resp.json()
 
     def test_score_job_uses_company_industry(self, client, db_session):
         company = Company(name="Health Corp", industry="healthcare")
@@ -82,6 +137,72 @@ class TestJobsAPI:
         resp = client.put(f"/api/jobs/{job.id}/score")
         assert resp.status_code == 200
         assert resp.json()["match_score_job_to_user"] > 0
+
+    def test_refresh_api_jobs_starts_background_task(self, client, monkeypatch):
+        from app.services import api_aggregator
+
+        self._reset_discovery_status()
+        called = {"count": 0}
+
+        def _fake_run() -> None:
+            called["count"] += 1
+
+        monkeypatch.setattr(api_aggregator, "run_job_discovery_api_only", _fake_run)
+
+        resp = client.post("/api/jobs/refresh/apis")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "API job discovery started"
+        assert called["count"] == 1
+
+    def test_refresh_scrapers_starts_background_task(self, client, monkeypatch):
+        from app.services import api_aggregator
+
+        self._reset_discovery_status()
+        called = {"count": 0}
+
+        def _fake_run() -> None:
+            called["count"] += 1
+
+        monkeypatch.setattr(api_aggregator, "run_job_discovery_scrapers_only", _fake_run)
+
+        resp = client.post("/api/jobs/refresh/scrapers")
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "Scraper job discovery started"
+        assert called["count"] == 1
+
+    def test_refresh_api_jobs_returns_already_running(self, client, monkeypatch):
+        from app.services import api_aggregator
+
+        self._reset_discovery_status()
+        api_aggregator.discovery_status["status"] = "running"
+        called = {"count": 0}
+
+        def _fake_run() -> None:
+            called["count"] += 1
+
+        monkeypatch.setattr(api_aggregator, "run_job_discovery_api_only", _fake_run)
+
+        resp = client.post("/api/jobs/refresh/apis")
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "already running"}
+        assert called["count"] == 0
+
+    def test_refresh_scrapers_returns_already_running(self, client, monkeypatch):
+        from app.services import api_aggregator
+
+        self._reset_discovery_status()
+        api_aggregator.discovery_status["status"] = "running"
+        called = {"count": 0}
+
+        def _fake_run() -> None:
+            called["count"] += 1
+
+        monkeypatch.setattr(api_aggregator, "run_job_discovery_scrapers_only", _fake_run)
+
+        resp = client.post("/api/jobs/refresh/scrapers")
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "already running"}
+        assert called["count"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -160,10 +281,15 @@ class TestApplicationsAPI:
 # ---------------------------------------------------------------------------
 
 class TestCompaniesAPI:
-    def test_list_companies_empty(self, client):
+    def test_list_companies_seeded_from_config(self, client):
         resp = client.get("/api/companies")
         assert resp.status_code == 200
-        assert resp.json() == []
+        companies = resp.json()
+        assert len(companies) > 0
+        oscar = next((c for c in companies if c["name"] == "Oscar Health"), None)
+        assert oscar is not None
+        assert oscar["ats_type"] == "greenhouse"
+        assert oscar["ats_id"] == "oscar"
 
     def test_create_company(self, client):
         resp = client.post("/api/companies", json={"name": "Health Corp"})

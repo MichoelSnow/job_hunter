@@ -84,6 +84,34 @@ def _fake_serply_response(n: int = 2) -> dict:
     }
 
 
+def _jsearch_job(
+    job_id: str,
+    title: str,
+    description: str,
+    *,
+    city: str = "New York",
+    state: str = "NY",
+    is_remote: bool = False,
+) -> dict:
+    return {
+        "job_id": job_id,
+        "job_title": title,
+        "job_description": description,
+        "job_city": city,
+        "job_state": state,
+        "job_is_remote": is_remote,
+        "employer_name": "Health Corp",
+        "employer_logo": None,
+        "job_apply_link": f"https://example.com/apply/{job_id}",
+        "job_min_salary": 150000,
+        "job_max_salary": 200000,
+        "job_salary_currency": "USD",
+        "job_salary_period": "YEAR",
+        "job_employment_type": "FULLTIME",
+        "job_posted_at_datetime_utc": "2026-04-01T00:00:00Z",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -232,6 +260,17 @@ class TestDiscoveryPipeline:
         assert job is not None
         assert job.description == ""
 
+    def test_html_encoded_description_is_normalized(self, db_session):
+        """Descriptions with escaped HTML should be stored as readable plain text."""
+        data = _fake_jsearch_response(1)
+        data["data"][0]["job_description"] = (
+            "&lt;div&gt;&lt;p&gt;Hybrid role &amp;amp; cross-functional.&lt;/p&gt;&lt;/div&gt;"
+        )
+        self._run_discovery(db_session, jsearch_data=data, serply_data={"jobs": []})
+        job = db_session.query(Job).first()
+        assert job is not None
+        assert job.description == "Hybrid role & cross-functional."
+
     def test_remote_jobs_filtered_out(self, db_session):
         """Jobs marked as remote should be removed by JobFilter."""
         data = _fake_jsearch_response(3)
@@ -253,10 +292,74 @@ class TestDiscoveryPipeline:
         from app.services.api_aggregator import discovery_status
         self._run_discovery(db_session)
         assert discovery_status["status"] == "complete"
+        assert discovery_status["mode"] == "full"
         assert discovery_status["inserted"] is not None
         assert discovery_status["updated"] is not None
         assert discovery_status["filtered_out"] is not None
         assert discovery_status["error"] is None
+
+    def test_pipeline_produces_non_uniform_scores(self, db_session):
+        """Regression: scoring should vary when job requirements differ."""
+        from app.models.job import JobRequirement
+
+        jsearch_data = {
+            "data": [
+                _jsearch_job(
+                    "js_high_fit",
+                    "Director of Data",
+                    "Python and SQL required. 3 years experience.",
+                ),
+                _jsearch_job(
+                    "js_low_fit",
+                    "Director of Data Infrastructure",
+                    "Kubernetes and Java required. 12 years experience.",
+                ),
+            ]
+        }
+
+        self._run_discovery(db_session, jsearch_data=jsearch_data, serply_data={"jobs": []})
+        scores = [s[0] for s in db_session.query(Job.overall_match_score).all()]
+        assert len(scores) >= 2
+        assert len(set(scores)) > 1
+        assert db_session.query(JobRequirement).count() > 0
+
+
+class TestDiscoveryModeRouting:
+    def test_run_job_discovery_uses_full_mode(self, monkeypatch):
+        from app.services import api_aggregator
+
+        captured = {}
+        monkeypatch.setattr(
+            api_aggregator,
+            "_run_job_discovery",
+            lambda **kwargs: captured.update(kwargs),
+        )
+        api_aggregator.run_job_discovery()
+        assert captured == {"fetch_api": True, "fetch_scrapers": True, "mode": "full"}
+
+    def test_run_job_discovery_api_only_uses_api_mode(self, monkeypatch):
+        from app.services import api_aggregator
+
+        captured = {}
+        monkeypatch.setattr(
+            api_aggregator,
+            "_run_job_discovery",
+            lambda **kwargs: captured.update(kwargs),
+        )
+        api_aggregator.run_job_discovery_api_only()
+        assert captured == {"fetch_api": True, "fetch_scrapers": False, "mode": "api"}
+
+    def test_run_job_discovery_scrapers_only_uses_scraper_mode(self, monkeypatch):
+        from app.services import api_aggregator
+
+        captured = {}
+        monkeypatch.setattr(
+            api_aggregator,
+            "_run_job_discovery",
+            lambda **kwargs: captured.update(kwargs),
+        )
+        api_aggregator.run_job_discovery_scrapers_only()
+        assert captured == {"fetch_api": False, "fetch_scrapers": True, "mode": "scrapers"}
 
 
 class TestCompanyScrape:
@@ -268,8 +371,10 @@ class TestCompanyScrape:
                 {
                     "id": i,
                     "title": f"Director of Data {i}",
-                    "location": {"name": "New York, NY"},
+                    "location": {"name": "New York, NY (Hybrid)"},
                     "absolute_url": f"https://boards.greenhouse.io/testco/jobs/{i}",
+                    "content": "<p>Hybrid role. Python required.</p>",
+                    "first_published": "2026-03-15T12:00:00Z",
                     "updated_at": "2026-04-01T00:00:00Z",
                 }
                 for i in range(n)
@@ -287,9 +392,13 @@ class TestCompanyScrape:
             jobs = scraper.fetch_jobs()
 
         assert len(jobs) == 5
+        assert mock_get.call_args.kwargs["params"] == {"content": "true"}
         assert all(j["source"] == "greenhouse" for j in jobs)
         assert all(j["external_id"].startswith("gh_") for j in jobs)
         assert all(j["company_name"] == "Test Co" for j in jobs)
+        assert all(j["description"] == "Hybrid role. Python required." for j in jobs)
+        assert all(j["work_arrangement"] == "hybrid" for j in jobs)
+        assert all(j["posted_date"] == "2026-03-15" for j in jobs)
 
     def test_lever_scraper_normalizes_jobs(self):
         from app.services.scraper.lever import LeverScraper
@@ -357,6 +466,35 @@ class TestCompanyScrape:
         assert len(jobs) == 3
         assert mock_post.call_count == 2  # confirmed pagination
         assert all(j["source"] == "workday" for j in jobs)
+
+    def test_workday_scraper_falls_back_board_variant(self):
+        from app.services.scraper.workday import WorkdayScraper
+
+        company = {
+            "name": "Test Co",
+            "ats_type": "workday",
+            "ats_id": "testco",
+            "workday_board": "TestCo_Careers",
+            "workday_instance": "wd1",
+            "careers_url": "https://www.testco.com/careers",
+        }
+        scraper = WorkdayScraper(company)
+
+        csrf_resp = _mock_http_response({})
+        csrf_resp.url = "https://testco.wd1.myworkdayjobs.com/en-US/TestCoCareers"
+        csrf_resp.cookies = {"CALYPSO_CSRF_TOKEN": "fake-csrf"}
+
+        bad = _mock_http_response({}, status_code=400)
+        good = _mock_http_response({"total": 0, "jobPostings": []})
+
+        with patch("requests.Session.get", return_value=csrf_resp), \
+             patch("requests.Session.post") as mock_post:
+            mock_post.side_effect = [bad, good]
+            jobs = scraper.fetch_jobs()
+
+        assert jobs == []
+        # First board fails (TestCo_Careers), second fallback uses TestCoCareers
+        assert mock_post.call_count == 2
 
     def test_companies_json_path_resolves(self):
         """Regression: _load_companies used parents[4] (wrong) instead of parents[3]."""

@@ -30,8 +30,8 @@ class Settings(BaseSettings):
     # Fewer queries = fewer API requests. 3 queries × 1 location = 3 HTTP calls per client.
     search_queries: list[str] = [
         "director OR head OR VP data healthcare OR healthtech New York",
-        "chief data officer healthcare OR healthtech New York",
-        "data leader analytics healthcare OR healthtech New York",
+        # "chief data officer healthcare OR healthtech New York",
+        # "data leader analytics healthcare OR healthtech New York",
     ]
 
     # Single metro location — NYC search results naturally include Manhattan and Brooklyn.

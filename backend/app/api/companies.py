@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.company import Company
 from app.schemas.company import CompanyCreate, CompanyResponse, CompanyUpdate
+from app.services.company_enrichment import enrich_companies_from_config
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/companies", tags=["companies"])
@@ -16,6 +17,7 @@ def list_companies(
     priority_only: bool = False,
     db: Session = Depends(get_db),
 ) -> list[Company]:
+    enrich_companies_from_config(db)
     query = db.query(Company)
     if priority_only:
         query = query.filter(Company.is_priority == True)  # noqa: E712
@@ -36,6 +38,7 @@ def create_company(payload: CompanyCreate, db: Session = Depends(get_db)) -> Com
 
 @router.get("/{company_id}", response_model=CompanyResponse)
 def get_company(company_id: int, db: Session = Depends(get_db)) -> Company:
+    enrich_companies_from_config(db)
     company = db.get(Company, company_id)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")

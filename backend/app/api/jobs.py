@@ -6,9 +6,16 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.models.job import Job
 from app.schemas.job import JobListResponse, JobResponse
+from app.services.job_normalization import html_to_text
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+
+def _sanitize_job_response(job: Job) -> JobResponse:
+    payload = JobResponse.model_validate(job, from_attributes=True).model_dump()
+    payload["description"] = html_to_text(payload.get("description"))
+    return JobResponse(**payload)
 
 
 @router.get("", response_model=JobListResponse)
@@ -17,14 +24,16 @@ def list_jobs(
     limit: int = Query(50, ge=1, le=200),
     min_score: float | None = Query(None, ge=0, le=100),
     location: str | None = None,
-    is_active: bool = True,
+    is_active: bool | None = Query(True),
     days: int | None = Query(None, description="Limit to jobs discovered in the last N days"),
     db: Session = Depends(get_db),
 ) -> JobListResponse:
     """List jobs with optional filters. Defaults to active jobs ordered by match score."""
     from datetime import date, timedelta
 
-    query = db.query(Job).filter(Job.is_active == is_active)
+    query = db.query(Job)
+    if is_active is not None:
+        query = query.filter(Job.is_active == is_active)
 
     if min_score is not None:
         query = query.filter(Job.overall_match_score >= min_score)
@@ -41,7 +50,7 @@ def list_jobs(
         .limit(limit)
         .all()
     )
-    return JobListResponse(total=total, items=items)
+    return JobListResponse(total=total, items=[_sanitize_job_response(item) for item in items])
 
 
 @router.get("/{job_id}", response_model=JobResponse)
@@ -50,20 +59,33 @@ def get_job(job_id: int, db: Session = Depends(get_db)) -> Job:
     job = db.get(Job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    return job
+    return _sanitize_job_response(job)
 
 
-@router.post("/refresh")
-def refresh_jobs(background_tasks: BackgroundTasks) -> dict[str, str]:
-    """Trigger job discovery and scoring in the background."""
-    from app.services.api_aggregator import discovery_status, run_job_discovery
+@router.post("/refresh/apis")
+def refresh_jobs_api(background_tasks: BackgroundTasks) -> dict[str, str]:
+    """Trigger paid API discovery (JSearch + Serply) in the background."""
+    from app.services.api_aggregator import discovery_status, run_job_discovery_api_only
 
     if discovery_status.get("status") == "running":
         return {"status": "already running"}
 
-    background_tasks.add_task(run_job_discovery)
-    logger.info("Job discovery triggered via API")
-    return {"status": "Job discovery started"}
+    background_tasks.add_task(run_job_discovery_api_only)
+    logger.info("API-only job discovery triggered via API")
+    return {"status": "API job discovery started"}
+
+
+@router.post("/refresh/scrapers")
+def refresh_jobs_scrapers(background_tasks: BackgroundTasks) -> dict[str, str]:
+    """Trigger scraper-only discovery in the background."""
+    from app.services.api_aggregator import discovery_status, run_job_discovery_scrapers_only
+
+    if discovery_status.get("status") == "running":
+        return {"status": "already running"}
+
+    background_tasks.add_task(run_job_discovery_scrapers_only)
+    logger.info("Scraper-only job discovery triggered via API")
+    return {"status": "Scraper job discovery started"}
 
 
 @router.get("/refresh/status")
@@ -83,6 +105,30 @@ def hide_job(job_id: int, db: Session = Depends(get_db)) -> dict[str, str]:
     job.is_active = False
     db.commit()
     return {"status": "hidden"}
+
+
+@router.put("/{job_id}/unhide")
+def unhide_job(job_id: int, db: Session = Depends(get_db)) -> dict[str, str]:
+    """Mark a previously hidden job as active."""
+    job = db.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+    job.is_active = True
+    db.commit()
+    return {"status": "active"}
+
+
+@router.get("/filters/locations")
+def list_job_locations(
+    is_active: bool | None = Query(True),
+    db: Session = Depends(get_db),
+) -> list[str]:
+    """Return distinct non-empty locations for dropdown filtering."""
+    query = db.query(Job.location).filter(Job.location.is_not(None), Job.location != "")
+    if is_active is not None:
+        query = query.filter(Job.is_active == is_active)
+    rows = query.distinct().order_by(Job.location.asc()).all()
+    return [row[0] for row in rows]
 
 
 @router.put("/{job_id}/score")

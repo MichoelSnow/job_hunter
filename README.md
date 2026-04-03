@@ -86,10 +86,16 @@ See [docs/architecture.md](docs/architecture.md) for the full directory layout a
 
 ## Triggering a Job Search
 
-With the backend running, hit the refresh endpoint:
+With the backend running, trigger only paid API sources:
 
 ```bash
-curl -X POST http://localhost:8000/api/jobs/refresh
+curl -X POST http://localhost:8000/api/jobs/refresh/apis
 ```
 
-Or use the UI "Refresh Jobs" button.
+Trigger only scrapers:
+
+```bash
+curl -X POST http://localhost:8000/api/jobs/refresh/scrapers
+```
+
+Or use the UI buttons: "Refresh API Jobs" and "Refresh Scraped Jobs".

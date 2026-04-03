@@ -3,7 +3,7 @@ import logging
 from datetime import date
 from typing import Any
 
-from app.services.job_normalization import infer_work_arrangement
+from app.services.job_normalization import html_to_text, infer_work_arrangement
 from app.services.scraper.base import BaseJobScraper
 
 logger = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ class LeverScraper(BaseJobScraper):
     def normalize(self, raw: dict[str, Any]) -> dict[str, Any]:
         categories = raw.get("categories", {})
         title = raw.get("text") or ""
-        description = raw.get("descriptionPlain") or ""
+        description = html_to_text(raw.get("descriptionPlain"))
         location = categories.get("location", "")
         return {
             "external_id": f"lv_{raw.get('id')}",

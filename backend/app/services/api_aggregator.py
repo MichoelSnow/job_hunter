@@ -8,7 +8,7 @@ import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.config.settings import settings
-from app.services.job_normalization import infer_work_arrangement
+from app.services.job_normalization import html_to_text, infer_work_arrangement
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 # Shape is intentionally simple so the API endpoint can return it directly.
 discovery_status: dict[str, Any] = {
     "status": "idle",  # idle | running | complete | error
+    "mode": None,  # full | api | scrapers
     "step": None,
     "started_at": None,
     "completed_at": None,
@@ -62,7 +63,7 @@ class JSearchClient:
             raise
 
     def normalize(self, raw: dict[str, Any]) -> dict[str, Any]:
-        description = raw.get("job_description") or ""
+        description = html_to_text(raw.get("job_description"))
         location = f"{raw.get('job_city', '')}, {raw.get('job_state', '')}".strip(", ")
         return {
             "external_id": f"js_{raw.get('job_id')}",
@@ -120,7 +121,7 @@ class SerplyClient:
             raise
 
     def normalize(self, raw: dict[str, Any]) -> dict[str, Any]:
-        description = raw.get("description") or ""
+        description = html_to_text(raw.get("description"))
         location = raw.get("location") or ""
         return {
             "external_id": f"sp_{raw.get('job_id') or raw.get('link', '')[-32:]}",
@@ -235,22 +236,23 @@ def run_company_scrape() -> list[dict]:
     return all_jobs
 
 
-def run_job_discovery() -> None:
+def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> None:
     """
-    Full job discovery pipeline:
-      1. Fetch from external APIs (JSearch, Serply)
-      2. Fetch from company ATS scrapers (Greenhouse, Lever, Workday)
-      3. Apply hard filters (location, work arrangement, role level)
-      4. Upsert filtered jobs into the database
-      5. Parse requirements and score all active jobs
+    Job discovery pipeline with selectable sources.
     """
     from app.db.session import SessionLocal
+    from app.services.company_enrichment import enrich_companies_from_config
     from app.services.job_filter import JobFilter
     from app.services.job_store import bulk_upsert_jobs, record_api_usage
 
+    if not fetch_api and not fetch_scrapers:
+        raise ValueError("At least one discovery source must be enabled")
+
+    initial_step = "Fetching from job search APIs..." if fetch_api else "Scraping company job boards..."
     _set_status(
         status="running",
-        step="Fetching from job search APIs...",
+        mode=mode,
+        step=initial_step,
         started_at=datetime.utcnow().isoformat(),
         completed_at=None,
         inserted=None,
@@ -258,20 +260,23 @@ def run_job_discovery() -> None:
         filtered_out=None,
         error=None,
     )
-    logger.info("Starting job discovery run")
+    logger.info("Starting job discovery run (mode=%s)", mode)
 
     try:
-        api_jobs = JobAPIAggregator().search_all()
+        api_jobs = JobAPIAggregator().search_all() if fetch_api else []
 
-        _set_status(step="Scraping company job boards...")
-        scraped_jobs = run_company_scrape()
+        scraped_jobs: list[dict] = []
+        if fetch_scrapers:
+            _set_status(step="Scraping company job boards...")
+            scraped_jobs = run_company_scrape()
         all_jobs = api_jobs + scraped_jobs
 
         logger.info(
-            "Fetched %d API jobs + %d scraped jobs = %d total",
+            "Fetched %d API jobs + %d scraped jobs = %d total (mode=%s)",
             len(api_jobs),
             len(scraped_jobs),
             len(all_jobs),
+            mode,
         )
 
         _set_status(step="Filtering jobs...")
@@ -281,6 +286,7 @@ def run_job_discovery() -> None:
         db = SessionLocal()
         try:
             inserted, updated = bulk_upsert_jobs(db, filtered_jobs)
+            enrich_companies_from_config(db)
 
             sources: dict[str, int] = {}
             for job in all_jobs:
@@ -306,6 +312,7 @@ def run_job_discovery() -> None:
         filtered_out = len(all_jobs) - len(filtered_jobs)
         _set_status(
             status="complete",
+            mode=mode,
             step=None,
             completed_at=datetime.utcnow().isoformat(),
             inserted=inserted,
@@ -313,15 +320,37 @@ def run_job_discovery() -> None:
             filtered_out=filtered_out,
         )
         logger.info(
-            "Discovery run complete: %d inserted, %d updated, %d filtered out",
+            "Discovery run complete (mode=%s): %d inserted, %d updated, %d filtered out",
+            mode,
             inserted,
             updated,
             filtered_out,
         )
 
     except Exception as exc:
-        _set_status(status="error", step=None, completed_at=datetime.utcnow().isoformat(), error=str(exc))
-        logger.exception("Job discovery run failed")
+        _set_status(
+            status="error",
+            mode=mode,
+            step=None,
+            completed_at=datetime.utcnow().isoformat(),
+            error=str(exc),
+        )
+        logger.exception("Job discovery run failed (mode=%s)", mode)
+
+
+def run_job_discovery() -> None:
+    """Run full discovery (paid APIs + scrapers)."""
+    _run_job_discovery(fetch_api=True, fetch_scrapers=True, mode="full")
+
+
+def run_job_discovery_api_only() -> None:
+    """Run discovery from paid APIs only (JSearch + Serply)."""
+    _run_job_discovery(fetch_api=True, fetch_scrapers=False, mode="api")
+
+
+def run_job_discovery_scrapers_only() -> None:
+    """Run discovery from company ATS scrapers only."""
+    _run_job_discovery(fetch_api=False, fetch_scrapers=True, mode="scrapers")
 
 
 def _score_all_active_jobs(db: "Session", engine: "ScoringEngine") -> None:
