@@ -40,6 +40,7 @@ class JobResponse(JobBase):
     company_industry: str | None = None
     discovered_date: date
     is_active: bool
+    passes_user_filters: bool
     match_score_user_to_job: float | None = None
     match_score_job_to_user: float | None = None
     overall_match_score: float | None = None

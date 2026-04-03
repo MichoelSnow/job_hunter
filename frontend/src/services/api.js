@@ -37,6 +37,11 @@ export const updateCriterion = (id, data) =>
   api.put(`/criteria/${id}`, data).then((r) => r.data);
 export const deleteCriterion = (id) => api.delete(`/criteria/${id}`).then((r) => r.data);
 
+// Discovery Settings
+export const getDiscoverySettings = () => api.get("/settings/discovery").then((r) => r.data);
+export const updateDiscoverySettings = (data) =>
+  api.put("/settings/discovery", data).then((r) => r.data);
+
 // Analytics
 export const getDashboardStats = () => api.get("/analytics/dashboard").then((r) => r.data);
 export const getApiUsage = () => api.get("/analytics/api-usage").then((r) => r.data);

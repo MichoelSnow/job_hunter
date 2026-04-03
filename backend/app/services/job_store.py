@@ -29,6 +29,7 @@ _MUTABLE_JOB_FIELDS = (
     "source_url",
     "raw_data",
     "is_active",
+    "passes_user_filters",
 )
 
 

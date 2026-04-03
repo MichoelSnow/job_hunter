@@ -54,6 +54,7 @@ class Job(Base):
     source: Mapped[str] = mapped_column(String(100), nullable=False)
     source_url: Mapped[str | None] = mapped_column(String(1000))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    passes_user_filters: Mapped[bool] = mapped_column(Boolean, default=True)
     match_score_user_to_job: Mapped[float | None] = mapped_column(Float)
     match_score_job_to_user: Mapped[float | None] = mapped_column(Float)
     overall_match_score: Mapped[float | None] = mapped_column(Float)
@@ -79,6 +80,7 @@ class Job(Base):
         Index("idx_jobs_closed_date", "closed_date"),
         Index("idx_jobs_match_score", "overall_match_score"),
         Index("idx_jobs_is_active", "is_active"),
+        Index("idx_jobs_user_filters", "passes_user_filters"),
         Index("idx_jobs_location", "location"),
     )
 

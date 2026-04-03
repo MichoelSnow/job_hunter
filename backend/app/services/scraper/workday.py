@@ -27,7 +27,7 @@ from app.services.scraper.base import BaseJobScraper
 
 logger = logging.getLogger(__name__)
 
-_PAGE_SIZE = 100
+_PAGE_SIZE = 20
 _MYWORKDAY_HOST_RE = re.compile(r"^(?P<tenant>[a-z0-9-]+)\.(?P<instance>wd\d+)\.myworkdayjobs\.com$", re.IGNORECASE)
 _CXS_URL_RE = re.compile(
     r"https://(?P<host>[a-z0-9.-]+?\.myworkdayjobs\.com)/wday/cxs/(?P<tenant>[^/]+)/(?P<board>[^/]+)/jobs",
@@ -141,6 +141,7 @@ class WorkdayScraper(BaseJobScraper):
         headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
+            "Origin": base_url,
         }
         seed_url = self.company.get("careers_url") or f"{base_url}/{configured_board}"
         inferred_board: str | None = None

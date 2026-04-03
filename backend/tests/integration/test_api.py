@@ -184,6 +184,39 @@ class TestJobsAPI:
         assert resp.status_code == 200
         assert "Manhattan, NY" in resp.json()
 
+    def test_list_jobs_excludes_user_filtered_jobs_for_all_status_views(self, client, db_session):
+        visible = Job(
+            title="Visible Job",
+            description="desc",
+            location="Manhattan, NY",
+            work_arrangement="hybrid",
+            application_url="https://example.com/apply/visible",
+            source="manual",
+            discovered_date=date(2026, 4, 1),
+            is_active=True,
+            passes_user_filters=True,
+        )
+        filtered = Job(
+            title="Filtered Job",
+            description="desc",
+            location="Remote",
+            work_arrangement="remote",
+            application_url="https://example.com/apply/filtered",
+            source="manual",
+            discovered_date=date(2026, 4, 1),
+            is_active=False,
+            passes_user_filters=False,
+        )
+        db_session.add_all([visible, filtered])
+        db_session.commit()
+
+        active_resp = client.get("/api/jobs", params={"is_active": True})
+        hidden_resp = client.get("/api/jobs", params={"is_active": False})
+        assert active_resp.status_code == 200
+        assert hidden_resp.status_code == 200
+        assert [item["title"] for item in active_resp.json()["items"]] == ["Visible Job"]
+        assert hidden_resp.json()["items"] == []
+
     def test_list_jobs_sort_applies_before_pagination(self, client, db_session):
         for title in ("Zeta Role", "Alpha Role", "Mid Role"):
             db_session.add(
@@ -605,6 +638,154 @@ class TestAnalyticsAPI:
         resp = client.get("/api/analytics/api-usage")
         assert resp.status_code == 200
         assert isinstance(resp.json(), list)
+
+
+# ---------------------------------------------------------------------------
+# Discovery Settings
+# ---------------------------------------------------------------------------
+
+class TestDiscoverySettingsAPI:
+    def test_get_discovery_settings_creates_defaults(self, client):
+        resp = client.get("/api/settings/discovery")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert isinstance(body["search_queries"], list)
+        assert isinstance(body["filter_locations"], list)
+        assert isinstance(body["filter_title_keywords"], list)
+        assert body["filter_exclude_remote"] is True
+        assert body["filter_target_salary"] is None
+        assert body["filter_include_missing_salary"] is True
+
+    def test_update_discovery_settings(self, client):
+        payload = {
+            "search_queries": ["director data healthcare", "vp analytics healthtech"],
+            "filter_locations": ["New York, NY", "Brooklyn, NY"],
+            "filter_title_keywords": ["director", "vp", "head of"],
+            "filter_exclude_remote": False,
+            "filter_target_salary": 190000,
+            "filter_include_missing_salary": False,
+        }
+        resp = client.put("/api/settings/discovery", json=payload)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["search_queries"] == payload["search_queries"]
+        assert body["filter_locations"] == payload["filter_locations"]
+        assert body["filter_title_keywords"] == payload["filter_title_keywords"]
+        assert body["filter_exclude_remote"] is False
+        assert body["filter_target_salary"] == 190000
+        assert body["filter_include_missing_salary"] is False
+
+    def test_update_discovery_settings_reapplies_job_visibility(self, client, db_session):
+        visible = Job(
+            title="Director of Data",
+            description="Hybrid role in Manhattan.",
+            location="Manhattan, NY",
+            work_arrangement="hybrid",
+            application_url="https://example.com/apply/1",
+            source="manual",
+            discovered_date=date(2026, 4, 1),
+            passes_user_filters=True,
+        )
+        filtered = Job(
+            title="Data Analyst",
+            description="Hybrid role in Manhattan.",
+            location="Manhattan, NY",
+            work_arrangement="hybrid",
+            application_url="https://example.com/apply/2",
+            source="manual",
+            discovered_date=date(2026, 4, 1),
+            passes_user_filters=True,
+        )
+        db_session.add_all([visible, filtered])
+        db_session.commit()
+
+        payload = {
+            "search_queries": ["director data healthcare"],
+            "filter_locations": ["New York, NY"],
+            "filter_title_keywords": ["director"],
+            "filter_exclude_remote": True,
+            "filter_target_salary": None,
+            "filter_include_missing_salary": True,
+        }
+        update_resp = client.put("/api/settings/discovery", json=payload)
+        assert update_resp.status_code == 200
+
+        jobs_resp = client.get("/api/jobs")
+        assert jobs_resp.status_code == 200
+        titles = [item["title"] for item in jobs_resp.json()["items"]]
+        assert "Director of Data" in titles
+        assert "Data Analyst" not in titles
+
+    def test_salary_filter_keeps_jobs_that_can_meet_minimum_salary(self, client, db_session):
+        in_range = Job(
+            title="Director of Data",
+            description="desc",
+            location="Manhattan, NY",
+            work_arrangement="hybrid",
+            application_url="https://example.com/apply/1",
+            source="manual",
+            discovered_date=date(2026, 4, 1),
+            passes_user_filters=True,
+            salary_min=170000,
+            salary_max=200000,
+        )
+        above_minimum = Job(
+            title="Director of Analytics",
+            description="desc",
+            location="Manhattan, NY",
+            work_arrangement="hybrid",
+            application_url="https://example.com/apply/2",
+            source="manual",
+            discovered_date=date(2026, 4, 1),
+            passes_user_filters=True,
+            salary_min=210000,
+            salary_max=230000,
+        )
+        below_minimum = Job(
+            title="Director of Reporting",
+            description="desc",
+            location="Manhattan, NY",
+            work_arrangement="hybrid",
+            application_url="https://example.com/apply/4",
+            source="manual",
+            discovered_date=date(2026, 4, 1),
+            passes_user_filters=True,
+            salary_min=120000,
+            salary_max=150000,
+        )
+        no_salary = Job(
+            title="Director of BI",
+            description="desc",
+            location="Manhattan, NY",
+            work_arrangement="hybrid",
+            application_url="https://example.com/apply/3",
+            source="manual",
+            discovered_date=date(2026, 4, 1),
+            passes_user_filters=True,
+            salary_min=None,
+            salary_max=None,
+        )
+        db_session.add_all([in_range, above_minimum, below_minimum, no_salary])
+        db_session.commit()
+
+        settings_payload = {
+            "search_queries": ["director data healthcare"],
+            "filter_locations": ["New York, NY"],
+            "filter_title_keywords": ["director"],
+            "filter_exclude_remote": False,
+            "filter_target_salary": 190000,
+            "filter_include_missing_salary": False,
+        }
+        update_resp = client.put("/api/settings/discovery", json=settings_payload)
+        assert update_resp.status_code == 200
+
+        jobs_resp = client.get("/api/jobs")
+        assert jobs_resp.status_code == 200
+        titles = [item["title"] for item in jobs_resp.json()["items"]]
+        assert "Director of Data" in titles
+        assert "Director of Analytics" in titles
+        assert "Director of Reporting" not in titles
+        assert "Director of BI" not in titles
 
 
 # ---------------------------------------------------------------------------

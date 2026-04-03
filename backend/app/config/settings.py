@@ -26,19 +26,6 @@ class Settings(BaseSettings):
     # Serply: results per request (max 100).
     serply_num_results: int = 100
 
-    # Default search queries — kept broad so each query covers a wide role/industry range.
-    # Fewer queries = fewer API requests. 3 queries × 1 location = 3 HTTP calls per client.
-    search_queries: list[str] = [
-        "director OR head OR VP data healthcare OR healthtech New York",
-        # "chief data officer healthcare OR healthtech New York",
-        # "data leader analytics healthcare OR healthtech New York",
-    ]
-
-    # Single metro location — NYC search results naturally include Manhattan and Brooklyn.
-    search_locations: list[str] = [
-        "New York, NY",
-    ]
-
     # Scoring weights — only defined here, injected into ScoringEngine at construction
     user_to_job_weight: float = 0.6
     job_to_user_weight: float = 0.4

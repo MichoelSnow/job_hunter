@@ -1,16 +1,250 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createCriterion,
   deleteCriterion,
   getApiUsage,
   getCriteria,
+  getDiscoverySettings,
   getUserProfile,
+  updateDiscoverySettings,
   updateCriterion,
 } from "../services/api";
 import axios from "axios";
 
 const CRITERION_TYPES = ["industry", "location", "min_salary", "role_level", "company_size", "other"];
+
+function DiscoverySettingsSection() {
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState({
+    search_queries_text: "",
+    filter_locations_text: "",
+    filter_title_keywords_text: "",
+    filter_exclude_remote: true,
+    filter_target_salary_text: "",
+    filter_include_missing_salary: true,
+  });
+  const [apiError, setApiError] = useState(null);
+  const [filtersError, setFiltersError] = useState(null);
+  const [apiSaved, setApiSaved] = useState(false);
+  const [filtersSaved, setFiltersSaved] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["discovery-settings"],
+    queryFn: getDiscoverySettings,
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: updateDiscoverySettings,
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["discovery-settings"], updated);
+      setApiError(null);
+      setFiltersError(null);
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+    },
+    onError: (err) => {
+      const message = err.response?.data?.detail ?? "Failed to save settings.";
+      setApiError(message);
+      setFiltersError(message);
+    },
+  });
+
+  useEffect(() => {
+    if (!data) return;
+    setForm({
+      search_queries_text: (data.search_queries || []).join("\n"),
+      filter_locations_text: (data.filter_locations || []).join("\n"),
+      filter_title_keywords_text: (data.filter_title_keywords || []).join("\n"),
+      filter_exclude_remote: !!data.filter_exclude_remote,
+      filter_target_salary_text:
+        data.filter_target_salary == null ? "" : String(data.filter_target_salary),
+      filter_include_missing_salary: !!data.filter_include_missing_salary,
+    });
+  }, [data]);
+
+  function parsedQueries() {
+    return form.search_queries_text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+
+  function parsedFilterLocations() {
+    return form.filter_locations_text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+
+  function parsedFilterTitleKeywords() {
+    return form.filter_title_keywords_text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+
+  function parsedTargetSalary() {
+    const raw = form.filter_target_salary_text.trim();
+    if (!raw) return null;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return null;
+    return Math.round(value);
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded border p-4">
+        <h2 className="font-semibold text-gray-800 mb-1 text-sm">API Search Inputs</h2>
+        <div className="text-xs text-gray-500 mb-3">
+          These settings affect only paid API searches (JSearch/Serply).
+        </div>
+        {isLoading ? (
+          <div className="text-gray-400 text-sm">Loading...</div>
+        ) : (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveMutation.mutate({
+                search_queries: parsedQueries(),
+                filter_locations: parsedFilterLocations(),
+                filter_title_keywords: parsedFilterTitleKeywords(),
+                filter_exclude_remote: form.filter_exclude_remote,
+                filter_target_salary: parsedTargetSalary(),
+                filter_include_missing_salary: form.filter_include_missing_salary,
+              });
+              setApiSaved(true);
+              setTimeout(() => setApiSaved(false), 1500);
+            }}
+            className="space-y-3"
+          >
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Search queries (one per line)</label>
+              <textarea
+                rows={4}
+                value={form.search_queries_text}
+                onChange={(e) => setForm((d) => ({ ...d, search_queries_text: e.target.value }))}
+                className="border rounded px-2 py-1 text-sm w-full"
+              />
+            </div>
+            {apiError ? (
+              <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+                {apiError}
+              </div>
+            ) : null}
+            <div className="flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={saveMutation.isPending}
+                className="rounded bg-blue-600 text-white px-3 py-1.5 text-sm hover:bg-blue-700 disabled:opacity-50"
+              >
+                Save API Search Inputs
+              </button>
+              {apiSaved ? <span className="text-xs text-green-700">Saved</span> : null}
+            </div>
+          </form>
+        )}
+      </div>
+
+      <div className="bg-white rounded border p-4">
+        <h2 className="font-semibold text-gray-800 mb-1 text-sm">Post-Collection Rules</h2>
+        <div className="text-xs text-gray-500 mb-3">
+          These rules affect visibility after jobs are collected from APIs and scrapers.
+        </div>
+        {isLoading ? (
+          <div className="text-gray-400 text-sm">Loading...</div>
+        ) : (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveMutation.mutate({
+                search_queries: parsedQueries(),
+                filter_locations: parsedFilterLocations(),
+                filter_title_keywords: parsedFilterTitleKeywords(),
+                filter_exclude_remote: form.filter_exclude_remote,
+                filter_target_salary: parsedTargetSalary(),
+                filter_include_missing_salary: form.filter_include_missing_salary,
+              });
+              setFiltersSaved(true);
+              setTimeout(() => setFiltersSaved(false), 1500);
+            }}
+            className="space-y-3"
+          >
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                Allowed locations (one per line)
+              </label>
+              <textarea
+                rows={3}
+                value={form.filter_locations_text}
+                onChange={(e) => setForm((d) => ({ ...d, filter_locations_text: e.target.value }))}
+                className="border rounded px-2 py-1 text-sm w-full"
+              />
+            </div>
+            <div className="flex flex-wrap gap-4">
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={form.filter_exclude_remote}
+                  onChange={(e) => setForm((d) => ({ ...d, filter_exclude_remote: e.target.checked }))}
+                />
+                Exclude fully remote jobs
+              </label>
+              <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={form.filter_include_missing_salary}
+                  onChange={(e) =>
+                    setForm((d) => ({ ...d, filter_include_missing_salary: e.target.checked }))
+                  }
+                />
+                Include jobs with missing salary range
+              </label>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                Minimum salary (jobs that can meet/exceed this value)
+              </label>
+              <input
+                type="number"
+                min={0}
+                value={form.filter_target_salary_text}
+                onChange={(e) => setForm((d) => ({ ...d, filter_target_salary_text: e.target.value }))}
+                className="border rounded px-2 py-1 text-sm w-48"
+                placeholder="e.g. 190000"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">
+                Job title keywords (one per line)
+              </label>
+              <textarea
+                rows={4}
+                value={form.filter_title_keywords_text}
+                onChange={(e) => setForm((d) => ({ ...d, filter_title_keywords_text: e.target.value }))}
+                className="border rounded px-2 py-1 text-sm w-full"
+              />
+            </div>
+            {filtersError ? (
+              <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+                {filtersError}
+              </div>
+            ) : null}
+            <div className="flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={saveMutation.isPending}
+                className="rounded bg-blue-600 text-white px-3 py-1.5 text-sm hover:bg-blue-700 disabled:opacity-50"
+              >
+                Save Post-Collection Rules
+              </button>
+              {filtersSaved ? <span className="text-xs text-green-700">Saved</span> : null}
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function ProfileSection() {
   const { data: profile, isLoading } = useQuery({
@@ -206,12 +440,13 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <h1 className="text-lg font-semibold text-gray-900">Settings</h1>
+      <DiscoverySettingsSection />
 
       {/* Criteria */}
       <div className="bg-white rounded border p-4">
-        <h2 className="font-semibold text-gray-800 mb-3 text-sm">Job Criteria</h2>
+        <h2 className="font-semibold text-gray-800 mb-3 text-sm">Post-Collection Rules: Match Criteria</h2>
         <div className="mb-3 text-xs text-gray-500">
-          Criteria are stored in the database and start empty until you add them here.
+          Criteria are applied after jobs are collected and influence match scoring.
         </div>
 
         {/* Add form */}

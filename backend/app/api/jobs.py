@@ -122,6 +122,7 @@ def list_jobs(
     from datetime import date, timedelta
 
     query = db.query(Job)
+    query = query.filter(Job.passes_user_filters == True)  # noqa: E712
     if is_active is not None:
         query = query.filter(Job.is_active == is_active)
 

@@ -47,8 +47,9 @@ class JSearchClient:
     def search(self, query: str, location: str) -> list[dict[str, Any]]:
         # num_pages bundles multiple result pages into one HTTP response (each page = 10 jobs).
         # Values 1–10 cost 2× quota; 11–20 cost 3× quota. Default of 10 → 100 results at 2× cost.
+        search_text = f"{query} {location}".strip()
         params = {
-            "query": f"{query} {location}",
+            "query": search_text,
             "num_pages": settings.jsearch_num_pages,
         }
         try:
@@ -108,7 +109,8 @@ class SerplyClient:
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
     def search(self, query: str, location: str) -> list[dict[str, Any]]:
         # num / per_page: Serply supports up to 100 results per request.
-        params = {"q": f"{query} {location}", "num": str(settings.serply_num_results)}
+        search_text = f"{query} {location}".strip()
+        params = {"q": search_text, "num": str(settings.serply_num_results)}
         try:
             response = self.session.get(self.URL, params=params, timeout=30)
             response.raise_for_status()
@@ -162,14 +164,20 @@ class JobAPIAggregator:
         if not self.clients:
             logger.warning("No API keys configured — job discovery will return no results")
 
-    def search_all(self) -> list[dict[str, Any]]:
+    def search_all(
+        self,
+        *,
+        search_queries: list[str],
+        search_locations: list[str],
+    ) -> list[dict[str, Any]]:
         """Run all queries across all clients; deduplicate by external_id."""
         all_results: list[dict[str, Any]] = []
         seen_ids: set[str] = set()
+        locations = search_locations or [""]
 
         for client, name in self.clients:
-            for query in settings.search_queries:
-                for location in settings.search_locations:
+            for query in search_queries:
+                for location in locations:
                     try:
                         raw_jobs = client.search(query=query, location=location)
                         for raw in raw_jobs:
@@ -342,6 +350,7 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
         mark_missing_scraped_jobs_closed,
         record_api_usage,
     )
+    from app.services.user_settings import get_or_create_user_settings
 
     if not fetch_api and not fetch_scrapers:
         raise ValueError("At least one discovery source must be enabled")
@@ -361,7 +370,26 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
     logger.info("Starting job discovery run (mode=%s)", mode)
 
     try:
-        api_jobs = JobAPIAggregator().search_all() if fetch_api else []
+        settings_db = SessionLocal()
+        try:
+            user_settings = get_or_create_user_settings(settings_db)
+            search_queries = user_settings.search_queries or []
+            filter_locations = user_settings.filter_locations or []
+            exclude_remote = user_settings.filter_exclude_remote
+            title_keywords = user_settings.filter_title_keywords or []
+            target_salary = user_settings.filter_target_salary
+            include_missing_salary = user_settings.filter_include_missing_salary
+        finally:
+            settings_db.close()
+
+        api_jobs = (
+            JobAPIAggregator().search_all(
+                search_queries=search_queries,
+                search_locations=[],
+            )
+            if fetch_api
+            else []
+        )
 
         scraped_jobs: list[dict] = []
         observed_scraped_ids: dict[tuple[str, str], set[str]] = {}
@@ -378,13 +406,31 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
             mode,
         )
 
-        _set_status(step="Filtering jobs...")
-        filtered_jobs = JobFilter().apply_all(all_jobs)
+        _set_status(step="Applying user filters...")
+        filter_engine = JobFilter(
+            allowed_locations=filter_locations,
+            exclude_remote=exclude_remote,
+            title_keywords=title_keywords,
+            target_salary=target_salary,
+            include_missing_salary=include_missing_salary,
+        )
+        filtered_jobs = filter_engine.apply_all(all_jobs)
+        filtered_external_ids = {
+            str(job.get("external_id"))
+            for job in filtered_jobs
+            if job.get("external_id")
+        }
+        for job in all_jobs:
+            external_id = job.get("external_id")
+            if external_id:
+                job["passes_user_filters"] = str(external_id) in filtered_external_ids
+            else:
+                job["passes_user_filters"] = filter_engine.passes(job)
 
         _set_status(step="Saving to database...")
         db = SessionLocal()
         try:
-            inserted, updated = bulk_upsert_jobs(db, filtered_jobs)
+            inserted, updated = bulk_upsert_jobs(db, all_jobs)
             if fetch_scrapers:
                 mark_missing_scraped_jobs_closed(
                     db,
@@ -404,7 +450,7 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
             from app.services.scoring_engine import ScoringEngine
             from app.services.text_parser import load_user_profile
 
-            parse_and_store_requirements(db, filtered_jobs)
+            parse_and_store_requirements(db, all_jobs)
 
             _set_status(step="Scoring jobs...")
             user_profile = load_user_profile()
@@ -413,7 +459,7 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
         finally:
             db.close()
 
-        filtered_out = len(all_jobs) - len(filtered_jobs)
+        filtered_out = len([job for job in all_jobs if not job.get("passes_user_filters")])
         _set_status(
             status="complete",
             mode=mode,

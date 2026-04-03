@@ -1126,7 +1126,7 @@ def train_preference_model(applications: List[Application], jobs: List[Job]):
 
 ### Environment Variables
 
-Only secrets and environment-specific values go in `.env`. Scoring weights, search queries, and other application logic stay in `settings.py`.
+Only secrets and environment-specific values go in `.env`. Scoring weights stay in `settings.py`; API search inputs and post-collection filters are user-managed in the Settings UI and stored in the database.
 
 Create `.env` (copy from `.env.example`):
 ```bash

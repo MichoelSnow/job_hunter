@@ -209,7 +209,7 @@ overall_score = (user_to_job_score Ã— user_to_job_weight) + (job_to_user_score Ã
 
 ## Environment Variables (`.env`)
 
-Only secrets and environment-specific values belong in `.env`. Scoring weights, search queries, and other application logic stay in `settings.py`.
+Only secrets and environment-specific values belong in `.env`. Scoring weights stay in `settings.py`. Discovery queries/locations and hard filter toggles are user-managed via `/api/settings/discovery` and stored in the database.
 
 ```bash
 # Database
