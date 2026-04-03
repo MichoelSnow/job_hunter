@@ -1,4 +1,9 @@
-from app.services.job_normalization import html_to_text, infer_work_arrangement
+from app.services.job_normalization import (
+    extract_salary_from_text,
+    html_to_text,
+    infer_work_arrangement,
+    sanitize_description_html,
+)
 
 
 class TestInferWorkArrangement:
@@ -47,3 +52,50 @@ class TestHtmlToText:
     def test_html_to_text_unescapes_encoded_html_then_strips_tags(self):
         text = html_to_text("&lt;div&gt;Lead analytics &amp;amp; reporting&lt;/div&gt;")
         assert text == "Lead analytics & reporting"
+
+
+class TestSanitizeDescriptionHtml:
+    def test_preserves_basic_formatting_tags(self):
+        html = sanitize_description_html(
+            "&lt;div&gt;&lt;p&gt;<strong>Mission</strong> and <em>impact</em>&lt;/p&gt;"
+            "&lt;ul&gt;&lt;li&gt;One&lt;/li&gt;&lt;li&gt;Two&lt;/li&gt;&lt;/ul&gt;&lt;/div&gt;"
+        )
+        assert "<strong>Mission</strong>" in html
+        assert "<em>impact</em>" in html
+        assert "<ul>" in html
+        assert "<li>One</li>" in html
+
+    def test_removes_unsafe_tags_and_links(self):
+        html = sanitize_description_html(
+            '<p>Hello</p><script>alert(1)</script><a href="javascript:alert(1)">bad</a>'
+            '<a href="https://example.com">good</a>'
+        )
+        assert "<script" not in html
+        assert "javascript:" not in html
+        assert '<a href="https://example.com"' in html
+
+
+class TestExtractSalaryFromText:
+    def test_extracts_yearly_range_with_hyphen(self):
+        values = extract_salary_from_text("The base pay for this role is: $149,040 - $195,615 per year.")
+        assert values == (149040, 195615, "year", "USD")
+
+    def test_extracts_yearly_range_with_implied_base_salary_period(self):
+        values = extract_salary_from_text(
+            "The target base salary range for this position is $177,200 - $221,500 and is part "
+            "of a competitive total rewards package including equity and benefits."
+        )
+        assert values == (177200, 221500, "year", "USD")
+
+    def test_extracts_hourly_range_with_em_dash(self):
+        values = extract_salary_from_text(
+            "The estimated base pay range per hour for this role is:$17.67\u2014$24.34 USD"
+        )
+        assert values == (18, 24, "hour", "USD")
+
+    def test_extracts_range_with_to_connector(self):
+        values = extract_salary_from_text(
+            "The target base salary for this position ranges from $170,000 to $200,000, in addition "
+            "to a competitive equity and benefits package."
+        )
+        assert values == (170000, 200000, "year", "USD")

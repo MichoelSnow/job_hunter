@@ -24,6 +24,7 @@ _MUTABLE_JOB_FIELDS = (
     "salary_period",
     "employment_type",
     "posted_date",
+    "closed_date",
     "application_url",
     "source_url",
     "raw_data",
@@ -71,6 +72,12 @@ def upsert_job(db: Session, job_dict: dict[str, Any], company_id: int | None) ->
     if existing is not None:
         for field in _MUTABLE_JOB_FIELDS:
             value = job_dict.get(field)
+            if field == "closed_date":
+                if isinstance(value, str):
+                    value = date.fromisoformat(value)
+                # closed_date is explicitly cleared when a reopened role is observed.
+                setattr(existing, field, value)
+                continue
             if value is not None:
                 if field in ("posted_date",) and isinstance(value, str):
                     value = date.fromisoformat(value)
@@ -88,6 +95,8 @@ def upsert_job(db: Session, job_dict: dict[str, Any], company_id: int | None) ->
         job_fields["discovered_date"] = date.fromisoformat(job_fields["discovered_date"])
     if isinstance(job_fields.get("posted_date"), str):
         job_fields["posted_date"] = date.fromisoformat(job_fields["posted_date"])
+    if isinstance(job_fields.get("closed_date"), str):
+        job_fields["closed_date"] = date.fromisoformat(job_fields["closed_date"])
 
     job = Job(**job_fields)
     db.add(job)
@@ -199,3 +208,40 @@ def bulk_upsert_jobs(
     db.commit()
     logger.info("Upserted %d jobs: %d new, %d updated", inserted + updated, inserted, updated)
     return inserted, updated
+
+
+def mark_missing_scraped_jobs_closed(
+    db: Session,
+    observed_external_ids: dict[tuple[str, str], set[str]],
+    closed_on: date,
+) -> int:
+    """
+    Mark scraped jobs as closed when they disappear from a successful scraper run.
+
+    observed_external_ids is keyed by (company_name, source), with values as the set
+    of currently observed external_ids for that company/source in the current run.
+    """
+    from app.models.company import Company
+
+    closed_count = 0
+    for (company_name, source), seen_ids in observed_external_ids.items():
+        query = (
+            db.query(Job)
+            .join(Company, Job.company_id == Company.id)
+            .filter(
+                Company.name == company_name,
+                Job.source == source,
+                Job.closed_date.is_(None),
+            )
+        )
+        if seen_ids:
+            query = query.filter(~Job.external_id.in_(seen_ids))
+
+        stale_jobs = query.all()
+        for job in stale_jobs:
+            job.closed_date = closed_on
+        closed_count += len(stale_jobs)
+
+    if closed_count:
+        logger.info("Marked %d scraped jobs as closed on %s", closed_count, closed_on.isoformat())
+    return closed_count

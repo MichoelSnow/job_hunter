@@ -107,6 +107,12 @@ The SQLite database accumulates data across all job search sessions — whether 
 
 This means no concept of "search sessions" at the schema level — `discovered_date` on each job row is sufficient to scope any time window.
 
+For scraper-sourced jobs, if a role disappears from a successful scrape for that company/source, the job is marked closed by setting `closed_date` to that scrape date. If the role reappears in a later scrape, `closed_date` is cleared.
+
+Scraper target settings are sourced from the `companies` DB table (edited via the Companies page). `config/companies.json` is used as fallback only for scraper-specific metadata not currently stored in DB (for example Workday board/instance and HTML selectors).
+
+When a company is deleted from the Companies page, it is removed from `companies` and added to a DB tombstone list so it is not re-seeded from `config/companies.json` on subsequent syncs.
+
 ### DB Migrations
 Schema is recreated freely during Phases 0–5. Alembic will be added in Phase 6 once the schema stabilizes.
 

@@ -5,6 +5,7 @@ from sqlalchemy.orm import sessionmaker
 import app.models  # noqa: F401
 from app.db.base import Base
 from app.models.company import Company
+from app.models.company_tombstone import CompanyTombstone
 from app.services.company_enrichment import enrich_companies_from_config
 
 
@@ -52,3 +53,13 @@ class TestCompanyEnrichment:
         second_changes = enrich_companies_from_config(db)
         assert first_changes > 0
         assert second_changes == 0
+
+    def test_does_not_reinsert_tombstoned_company(self, db):
+        db.add(CompanyTombstone(name="Oscar Health"))
+        db.commit()
+
+        changes = enrich_companies_from_config(db)
+        company = db.query(Company).filter(Company.name == "Oscar Health").first()
+
+        assert changes >= 0
+        assert company is None

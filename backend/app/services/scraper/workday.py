@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from app.services.job_normalization import infer_work_arrangement
+from app.services.job_normalization import extract_salary_from_text, infer_work_arrangement
 from app.services.scraper.base import BaseJobScraper
 
 logger = logging.getLogger(__name__)
@@ -85,6 +85,8 @@ class WorkdayScraper(BaseJobScraper):
 
         title = raw.get("title") or ""
         location = raw.get("locationsText", "")
+        salary_text = " ".join(str(item) for item in bullet_fields if item)
+        salary_min, salary_max, salary_period, salary_currency = extract_salary_from_text(salary_text)
         return {
             "external_id": external_id,
             "title": title,
@@ -95,6 +97,10 @@ class WorkdayScraper(BaseJobScraper):
                 location=location,
                 description="",
             ),
+            "salary_min": salary_min,
+            "salary_max": salary_max,
+            "salary_currency": salary_currency or "USD",
+            "salary_period": salary_period,
             "application_url": apply_url,
             "source": "workday",
             "source_url": apply_url,

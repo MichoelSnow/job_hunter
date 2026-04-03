@@ -60,3 +60,17 @@ def create_tables() -> None:
 
     logger.info("Creating database tables")
     Base.metadata.create_all(bind=engine)
+    if "sqlite" in _database_url:
+        _ensure_sqlite_job_columns()
+
+
+def _ensure_sqlite_job_columns() -> None:
+    """Best-effort additive schema updates for local SQLite while Alembic is out of scope."""
+    with engine.begin() as conn:
+        columns = {
+            row[1]
+            for row in conn.exec_driver_sql("PRAGMA table_info(jobs)").fetchall()
+        }
+        if "closed_date" not in columns:
+            logger.info("Adding missing jobs.closed_date column")
+            conn.exec_driver_sql("ALTER TABLE jobs ADD COLUMN closed_date DATE")

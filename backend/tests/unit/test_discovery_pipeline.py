@@ -373,7 +373,8 @@ class TestCompanyScrape:
                     "title": f"Director of Data {i}",
                     "location": {"name": "New York, NY (Hybrid)"},
                     "absolute_url": f"https://boards.greenhouse.io/testco/jobs/{i}",
-                    "content": "<p>Hybrid role. Python required.</p>",
+                    "content": "<p>Hybrid role. Python required.</p>"
+                    "<p>The base pay for this role is: $149,040 - $195,615 per year.</p>",
                     "first_published": "2026-03-15T12:00:00Z",
                     "updated_at": "2026-04-01T00:00:00Z",
                 }
@@ -396,9 +397,16 @@ class TestCompanyScrape:
         assert all(j["source"] == "greenhouse" for j in jobs)
         assert all(j["external_id"].startswith("gh_") for j in jobs)
         assert all(j["company_name"] == "Test Co" for j in jobs)
-        assert all(j["description"] == "Hybrid role. Python required." for j in jobs)
+        assert all(
+            j["description"]
+            == "Hybrid role. Python required. The base pay for this role is: $149,040 - $195,615 per year."
+            for j in jobs
+        )
         assert all(j["work_arrangement"] == "hybrid" for j in jobs)
         assert all(j["posted_date"] == "2026-03-15" for j in jobs)
+        assert all(j["salary_min"] == 149040 for j in jobs)
+        assert all(j["salary_max"] == 195615 for j in jobs)
+        assert all(j["salary_period"] == "year" for j in jobs)
 
     def test_lever_scraper_normalizes_jobs(self):
         from app.services.scraper.lever import LeverScraper
@@ -411,7 +419,12 @@ class TestCompanyScrape:
                 "applyUrl": f"https://jobs.lever.co/testco/{i}/apply",
                 "hostedUrl": f"https://jobs.lever.co/testco/{i}",
                 "createdAt": 1743465600000,
-                "descriptionPlain": "Lead our analytics team.",
+                "descriptionPlain": (
+                    "Lead our analytics team. The target base salary range for this position "
+                    "is $177,200 - $221,500 and is part of a competitive total rewards package."
+                ),
+                "additionalPlain": "Additional details.",
+                "lists": [{"text": "What You'll Do:", "content": "<li>Build strategy</li>"}],
             }
             for i in range(3)
         ]
@@ -425,6 +438,14 @@ class TestCompanyScrape:
         assert len(jobs) == 3
         assert all(j["source"] == "lever" for j in jobs)
         assert all(j["external_id"].startswith("lv_") for j in jobs)
+        assert all(j["salary_min"] == 177200 for j in jobs)
+        assert all(j["salary_max"] == 221500 for j in jobs)
+        assert all(j["salary_period"] == "year" for j in jobs)
+        assert all("What You'll Do:" in j["description"] for j in jobs)
+        assert all("Build strategy" in j["description"] for j in jobs)
+        assert all(j["raw_data"].get("normalized_description_html") for j in jobs)
+        assert all(j["application_url"] == j["source_url"] for j in jobs)
+        assert all("/apply" not in j["application_url"] for j in jobs)
 
     def test_workday_scraper_paginates(self):
         from app.services.scraper.workday import WorkdayScraper
@@ -441,14 +462,28 @@ class TestCompanyScrape:
         page1 = {
             "total": 3,
             "jobPostings": [
-                {"title": f"Job {i}", "externalPath": f"/job/New-York/Job-{i}_JR00{i}", "bulletFields": [f"JR00{i}"]}
+                {
+                    "title": f"Job {i}",
+                    "externalPath": f"/job/New-York/Job-{i}_JR00{i}",
+                    "bulletFields": [
+                        f"JR00{i}",
+                        "The target base salary for this position ranges from $170,000 to $200,000",
+                    ],
+                }
                 for i in range(2)
             ],
         }
         page2 = {
             "total": 3,
             "jobPostings": [
-                {"title": "Job 2", "externalPath": "/job/New-York/Job-2_JR002", "bulletFields": ["JR002"]}
+                {
+                    "title": "Job 2",
+                    "externalPath": "/job/New-York/Job-2_JR002",
+                    "bulletFields": [
+                        "JR002",
+                        "The target base salary for this position ranges from $170,000 to $200,000",
+                    ],
+                }
             ],
         }
 
@@ -466,6 +501,9 @@ class TestCompanyScrape:
         assert len(jobs) == 3
         assert mock_post.call_count == 2  # confirmed pagination
         assert all(j["source"] == "workday" for j in jobs)
+        assert all(j["salary_min"] == 170000 for j in jobs)
+        assert all(j["salary_max"] == 200000 for j in jobs)
+        assert all(j["salary_period"] == "year" for j in jobs)
 
     def test_workday_scraper_falls_back_board_variant(self):
         from app.services.scraper.workday import WorkdayScraper
@@ -496,12 +534,151 @@ class TestCompanyScrape:
         # First board fails (TestCo_Careers), second fallback uses TestCoCareers
         assert mock_post.call_count == 2
 
+    def test_ashby_scraper_normalizes_jobs(self):
+        from app.services.scraper.ashby import AshbyScraper
+
+        company = {"name": "Allara Health", "ats_type": "ashby", "ats_id": "allarahealth"}
+        scraper = AshbyScraper(company)
+
+        response_data = {
+            "data": {
+                "jobBoard": {
+                    "jobPostings": [
+                        {
+                            "id": "ashby-job-1",
+                            "title": "Senior Product Manager",
+                            "locationName": "New York, NY",
+                            "workplaceType": "Hybrid",
+                            "employmentType": "FullTime",
+                            "compensationTierSummary": (
+                                "The target base salary for this position ranges from $170,000 to $200,000."
+                            ),
+                        }
+                    ]
+                }
+            }
+        }
+
+        with patch("requests.Session.post") as mock_post:
+            mock_post.return_value = _mock_http_response(response_data)
+            jobs = scraper.fetch_jobs()
+
+        assert len(jobs) == 1
+        job = jobs[0]
+        assert job["source"] == "ashby"
+        assert job["external_id"] == "as_ashby-job-1"
+        assert job["application_url"] == "https://jobs.ashbyhq.com/allarahealth/ashby-job-1"
+        assert job["source_url"] == "https://jobs.ashbyhq.com/allarahealth/ashby-job-1"
+        assert job["employment_type"] == "fulltime"
+        assert job["salary_min"] == 170000
+        assert job["salary_max"] == 200000
+
+    def test_html_scraper_extracts_salary_from_row_text(self):
+        from app.services.scraper.html_scraper import HtmlScraper
+
+        company = {
+            "name": "Test Co",
+            "ats_type": "custom",
+            "careers_url": "https://www.testco.com/careers",
+            "html_selectors": {
+                "job_list": "ul.jobs li",
+                "title": "a.job-title",
+                "location": "span.location",
+                "url": "a.job-title",
+            },
+        }
+        scraper = HtmlScraper(company)
+
+        html = """
+        <ul class="jobs">
+          <li>
+            <a class="job-title" href="/jobs/1">Data Analyst</a>
+            <span class="location">New York, NY</span>
+            <span class="salary">
+              The estimated base pay range per hour for this role is:$17.67—$24.34 USD
+            </span>
+          </li>
+        </ul>
+        """
+        response = _mock_http_response({})
+        response.text = html
+
+        with patch("requests.Session.get", return_value=response):
+            jobs = scraper.fetch_jobs()
+
+        assert len(jobs) == 1
+        job = jobs[0]
+        assert job["source"] == "html_scraper"
+        assert job["salary_min"] == 18
+        assert job["salary_max"] == 24
+        assert job["salary_period"] == "hour"
+        assert job["application_url"] == "https://www.testco.com/jobs/1"
+
     def test_companies_json_path_resolves(self):
         """Regression: _load_companies used parents[4] (wrong) instead of parents[3]."""
         from app.services.api_aggregator import _load_companies
         companies = _load_companies()
         assert isinstance(companies, list)
         assert len(companies) > 0, "companies.json not found or empty — check path in _load_companies()"
+
+    def test_load_companies_for_scrape_uses_db_values(self, db_session):
+        from app.models.company import Company
+        from app.services.api_aggregator import _load_companies_for_scrape
+
+        db_session.add(
+            Company(
+                name="Acme",
+                ats_type="lever",
+                ats_id="acme-custom",
+                careers_page_url="https://jobs.lever.co/acme",
+                scraper_enabled=True,
+            )
+        )
+        db_session.commit()
+
+        db_session.close = lambda: None
+        with patch("app.db.session.SessionLocal", return_value=db_session):
+            companies = _load_companies_for_scrape()
+
+        acme = next((c for c in companies if c.get("name") == "Acme"), None)
+        assert acme is not None
+        assert acme["ats_id"] == "acme-custom"
+        assert acme["ats_type"] == "lever"
+        assert acme["careers_url"] == "https://jobs.lever.co/acme"
+
+    def test_load_companies_for_scrape_uses_config_fallback(self, db_session):
+        from app.models.company import Company
+        from app.services.api_aggregator import _load_companies_for_scrape
+
+        db_session.add(
+            Company(
+                name="Temp Co",
+                ats_type="workday",
+                ats_id="tempco",
+                scraper_enabled=True,
+            )
+        )
+        db_session.commit()
+
+        db_session.close = lambda: None
+        with patch("app.db.session.SessionLocal", return_value=db_session), \
+             patch(
+                 "app.services.api_aggregator._load_company_config_map",
+                 return_value={
+                     "Temp Co": {
+                         "careers_url": "https://tempco.wd5.myworkdayjobs.com/Temp_Careers",
+                         "workday_board": "Temp_Careers",
+                         "workday_instance": "wd5",
+                     }
+                 },
+             ):
+            companies = _load_companies_for_scrape()
+
+        tempco = next((c for c in companies if c.get("name") == "Temp Co"), None)
+        assert tempco is not None
+        assert tempco["careers_url"] == "https://tempco.wd5.myworkdayjobs.com/Temp_Careers"
+        assert tempco["workday_board"] == "Temp_Careers"
+        assert tempco["workday_instance"] == "wd5"
 
     def test_load_companies_returns_enabled_entries(self):
         """All companies with ats_id set should be returned for scraping."""

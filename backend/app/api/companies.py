@@ -1,10 +1,12 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.company import Company
+from app.models.company_tombstone import CompanyTombstone
+from app.models.job import Job
 from app.schemas.company import CompanyCreate, CompanyResponse, CompanyUpdate
 from app.services.company_enrichment import enrich_companies_from_config
 
@@ -29,6 +31,9 @@ def create_company(payload: CompanyCreate, db: Session = Depends(get_db)) -> Com
     existing = db.query(Company).filter(Company.name == payload.name).first()
     if existing:
         raise HTTPException(status_code=409, detail="Company already exists")
+    tombstone = db.query(CompanyTombstone).filter(CompanyTombstone.name == payload.name).first()
+    if tombstone:
+        db.delete(tombstone)
     company = Company(**payload.model_dump(exclude_none=True))
     db.add(company)
     db.commit()
@@ -57,3 +62,22 @@ def update_company(
     db.commit()
     db.refresh(company)
     return company
+
+
+@router.delete("/{company_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_company(company_id: int, db: Session = Depends(get_db)) -> Response:
+    company = db.get(Company, company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
+    db.query(Job).filter(Job.company_id == company_id).update({"company_id": None})
+
+    tombstone = (
+        db.query(CompanyTombstone).filter(CompanyTombstone.name == company.name).first()
+    )
+    if tombstone is None:
+        db.add(CompanyTombstone(name=company.name))
+
+    db.delete(company)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

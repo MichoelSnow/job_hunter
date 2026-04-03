@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
+from app.models.company_tombstone import CompanyTombstone
 
 logger = logging.getLogger(__name__)
 _COMPANIES_CONFIG_PATH = Path(__file__).parents[3] / "config" / "companies.json"
@@ -25,9 +26,14 @@ def enrich_companies_from_config(db: Session) -> int:
 
     inserted = 0
     updated = 0
+    deleted_names = {
+        row[0] for row in db.query(CompanyTombstone.name).all()
+    }
     existing_by_name = {company.name: company for company in db.query(Company).all()}
 
     for name, config in config_map.items():
+        if name in deleted_names:
+            continue
         company = existing_by_name.get(name)
         if company is None:
             careers_url = config.get("careers_url")

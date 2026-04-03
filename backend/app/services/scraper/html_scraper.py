@@ -16,7 +16,7 @@ import logging
 from datetime import date
 from typing import Any
 
-from app.services.job_normalization import infer_work_arrangement
+from app.services.job_normalization import extract_salary_from_text, infer_work_arrangement
 from app.services.scraper.base import BaseJobScraper
 
 logger = logging.getLogger(__name__)
@@ -74,7 +74,14 @@ class HtmlScraper(BaseJobScraper):
             if not title:
                 continue
 
-            results.append({"title": title, "location": location, "url": href})
+            results.append(
+                {
+                    "title": title,
+                    "location": location,
+                    "url": href,
+                    "text": row.get_text(" ", strip=True),
+                }
+            )
 
         return results
 
@@ -87,6 +94,7 @@ class HtmlScraper(BaseJobScraper):
 
         title = raw.get("title", "")
         location = raw.get("location", "")
+        salary_min, salary_max, salary_period, salary_currency = extract_salary_from_text(raw.get("text"))
         return {
             "external_id": f"html_{short_hash}",
             "title": title,
@@ -97,6 +105,10 @@ class HtmlScraper(BaseJobScraper):
                 location=location,
                 description="",
             ),
+            "salary_min": salary_min,
+            "salary_max": salary_max,
+            "salary_currency": salary_currency or "USD",
+            "salary_period": salary_period,
             "application_url": raw.get("url", ""),
             "source": "html_scraper",
             "source_url": raw.get("url"),

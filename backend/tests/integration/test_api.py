@@ -51,6 +51,7 @@ class TestJobsAPI:
         assert resp.status_code == 200
         assert resp.json()["id"] == job_id
         assert "company_name" in resp.json()
+        assert "source_url" in resp.json()
 
     def test_get_job_sanitizes_html_encoded_description(self, client, db_session):
         job = Job(
@@ -69,6 +70,84 @@ class TestJobsAPI:
         resp = client.get(f"/api/jobs/{job.id}")
         assert resp.status_code == 200
         assert resp.json()["description"] == "Lead analytics & strategy"
+
+    def test_get_job_includes_sanitized_description_html(self, client, db_session):
+        job = Job(
+            title="Director of Data",
+            description="&lt;div&gt;&lt;p&gt;<strong>Mission</strong>&lt;/p&gt;&lt;/div&gt;",
+            location="Manhattan, NY",
+            work_arrangement="hybrid",
+            application_url="https://example.com/apply",
+            source="manual",
+            discovered_date=date(2026, 4, 1),
+            raw_data={
+                "description": (
+                    "&lt;p&gt;<strong>Mission</strong>&lt;/p&gt;"
+                    '&lt;a href=&quot;javascript:alert(1)&quot;&gt;bad&lt;/a&gt;'
+                ),
+            },
+        )
+        db_session.add(job)
+        db_session.commit()
+        db_session.refresh(job)
+
+        resp = client.get(f"/api/jobs/{job.id}")
+        assert resp.status_code == 200
+        assert "<strong>Mission</strong>" in resp.json()["description_html"]
+        assert "javascript:" not in resp.json()["description_html"]
+
+    def test_get_job_prefers_normalized_description_html(self, client, db_session):
+        job = Job(
+            title="Principal Technical Recruiter",
+            description="Fallback plain text",
+            location="New York, NY",
+            work_arrangement="hybrid",
+            application_url="https://example.com/apply",
+            source="lever",
+            discovered_date=date(2026, 4, 1),
+            raw_data={
+                "description": "<p>Body only</p>",
+                "normalized_description_html": (
+                    "<p><strong>Body</strong></p><h3>What You'll Do:</h3><ul><li>Build strategy</li></ul>"
+                ),
+            },
+        )
+        db_session.add(job)
+        db_session.commit()
+        db_session.refresh(job)
+
+        resp = client.get(f"/api/jobs/{job.id}")
+        assert resp.status_code == 200
+        html = resp.json()["description_html"]
+        assert "What You'll Do:" in html
+        assert "<li>Build strategy</li>" in html
+
+    def test_get_job_combines_html_sections_from_raw_data(self, client, db_session):
+        job = Job(
+            title="Principal Technical Recruiter",
+            description="Fallback plain text",
+            location="New York, NY",
+            work_arrangement="hybrid",
+            application_url="https://example.com/apply",
+            source="lever",
+            discovered_date=date(2026, 4, 1),
+            raw_data={
+                "description": "<p>Main body</p>",
+                "additional": "<p>Comp section</p>",
+                "lists": [{"text": "What You'll Do:", "content": "<li>Own strategy</li>"}],
+            },
+        )
+        db_session.add(job)
+        db_session.commit()
+        db_session.refresh(job)
+
+        resp = client.get(f"/api/jobs/{job.id}")
+        assert resp.status_code == 200
+        html = resp.json()["description_html"]
+        assert "Main body" in html
+        assert "Comp section" in html
+        assert "What You'll Do:" in html
+        assert "<li>Own strategy</li>" in html
 
     def test_hide_job(self, client_with_job):
         client, job_id = client_with_job
@@ -104,6 +183,68 @@ class TestJobsAPI:
         resp = client.get("/api/jobs/filters/locations")
         assert resp.status_code == 200
         assert "Manhattan, NY" in resp.json()
+
+    def test_list_jobs_sort_applies_before_pagination(self, client, db_session):
+        for title in ("Zeta Role", "Alpha Role", "Mid Role"):
+            db_session.add(
+                Job(
+                    title=title,
+                    description="desc",
+                    location="Manhattan, NY",
+                    work_arrangement="hybrid",
+                    application_url="https://example.com/apply",
+                    source="manual",
+                    discovered_date=date(2026, 4, 1),
+                )
+            )
+        db_session.commit()
+
+        page1 = client.get("/api/jobs", params={"sort_by": "title", "sort_direction": "asc", "limit": 1, "skip": 0})
+        page2 = client.get("/api/jobs", params={"sort_by": "title", "sort_direction": "asc", "limit": 1, "skip": 1})
+        page3 = client.get("/api/jobs", params={"sort_by": "title", "sort_direction": "asc", "limit": 1, "skip": 2})
+
+        assert page1.status_code == 200
+        assert page2.status_code == 200
+        assert page3.status_code == 200
+        assert page1.json()["items"][0]["title"] == "Alpha Role"
+        assert page2.json()["items"][0]["title"] == "Mid Role"
+        assert page3.json()["items"][0]["title"] == "Zeta Role"
+
+    def test_list_jobs_sort_by_company_name(self, client, db_session):
+        alpha = Company(name="Alpha Inc")
+        zeta = Company(name="Zeta Inc")
+        db_session.add_all([alpha, zeta])
+        db_session.flush()
+        db_session.add_all(
+            [
+                Job(
+                    title="Role 1",
+                    description="desc",
+                    location="Manhattan, NY",
+                    work_arrangement="hybrid",
+                    application_url="https://example.com/apply/1",
+                    source="manual",
+                    discovered_date=date(2026, 4, 1),
+                    company_id=zeta.id,
+                ),
+                Job(
+                    title="Role 2",
+                    description="desc",
+                    location="Manhattan, NY",
+                    work_arrangement="hybrid",
+                    application_url="https://example.com/apply/2",
+                    source="manual",
+                    discovered_date=date(2026, 4, 1),
+                    company_id=alpha.id,
+                ),
+            ]
+        )
+        db_session.commit()
+
+        resp = client.get("/api/jobs", params={"sort_by": "company_name", "sort_direction": "asc"})
+        assert resp.status_code == 200
+        names = [item["company_name"] for item in resp.json()["items"]]
+        assert names[:2] == ["Alpha Inc", "Zeta Inc"]
 
     def test_score_job_uses_company_industry(self, client, db_session):
         company = Company(name="Health Corp", industry="healthcare")
@@ -296,6 +437,27 @@ class TestCompaniesAPI:
         assert resp.status_code == 201
         assert resp.json()["name"] == "Health Corp"
 
+    def test_create_company_with_all_primary_fields(self, client):
+        payload = {
+            "name": "Acme Health",
+            "website_url": "https://acme.example.com",
+            "ats_type": "lever",
+            "ats_id": "acme",
+            "careers_page_url": "https://jobs.lever.co/acme",
+            "industry": "healthtech",
+            "is_priority": True,
+        }
+        resp = client.post("/api/companies", json=payload)
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["name"] == payload["name"]
+        assert body["website_url"] == payload["website_url"]
+        assert body["ats_type"] == payload["ats_type"]
+        assert body["ats_id"] == payload["ats_id"]
+        assert body["careers_page_url"] == payload["careers_page_url"]
+        assert body["industry"] == payload["industry"]
+        assert body["is_priority"] is True
+
     def test_create_duplicate_company_conflict(self, client):
         client.post("/api/companies", json={"name": "Health Corp"})
         resp = client.post("/api/companies", json={"name": "Health Corp"})
@@ -304,6 +466,64 @@ class TestCompaniesAPI:
     def test_get_company_not_found(self, client):
         resp = client.get("/api/companies/999")
         assert resp.status_code == 404
+
+    def test_delete_company(self, client):
+        created = client.post("/api/companies", json={"name": "Delete Me"})
+        company_id = created.json()["id"]
+
+        resp = client.delete(f"/api/companies/{company_id}")
+        assert resp.status_code == 204
+
+        list_resp = client.get("/api/companies")
+        assert list_resp.status_code == 200
+        names = [company["name"] for company in list_resp.json()]
+        assert "Delete Me" not in names
+
+    def test_delete_company_not_found(self, client):
+        resp = client.delete("/api/companies/999")
+        assert resp.status_code == 404
+
+    def test_delete_company_keeps_jobs_and_clears_company_fk(self, client, db_session):
+        company = Company(name="Job Co")
+        db_session.add(company)
+        db_session.flush()
+        job = Job(
+            title="Data Lead",
+            description="desc",
+            location="NYC",
+            work_arrangement="hybrid",
+            application_url="https://example.com/apply",
+            source="manual",
+            discovered_date=date(2026, 4, 1),
+            company_id=company.id,
+        )
+        db_session.add(job)
+        db_session.commit()
+        company_id = company.id
+        job_id = job.id
+
+        resp = client.delete(f"/api/companies/{company_id}")
+        assert resp.status_code == 204
+
+        db_session.expire_all()
+        persisted_job = db_session.get(Job, job_id)
+        assert persisted_job is not None
+        assert persisted_job.company_id is None
+
+    def test_delete_seeded_company_stays_deleted_after_enrichment(self, client):
+        companies_resp = client.get("/api/companies")
+        assert companies_resp.status_code == 200
+        companies = companies_resp.json()
+        oscar = next((c for c in companies if c["name"] == "Oscar Health"), None)
+        assert oscar is not None
+
+        delete_resp = client.delete(f"/api/companies/{oscar['id']}")
+        assert delete_resp.status_code == 204
+
+        post_delete = client.get("/api/companies")
+        assert post_delete.status_code == 200
+        names = [company["name"] for company in post_delete.json()]
+        assert "Oscar Health" not in names
 
 
 # ---------------------------------------------------------------------------

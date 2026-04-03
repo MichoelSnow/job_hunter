@@ -1,10 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { createCompany, getCompanies, updateCompany } from "../services/api";
+import {
+  createCompany,
+  deleteCompany,
+  getCompanies,
+  updateCompany,
+} from "../services/api";
+
+const EMPTY_COMPANY_FORM = {
+  name: "",
+  website_url: "",
+  ats_type: "",
+  ats_id: "",
+};
 
 export default function CompaniesPage() {
   const queryClient = useQueryClient();
-  const [newName, setNewName] = useState("");
+  const [newCompany, setNewCompany] = useState(EMPTY_COMPANY_FORM);
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState({});
   const [error, setError] = useState(null);
@@ -18,7 +30,7 @@ export default function CompaniesPage() {
     mutationFn: createCompany,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["companies"] });
-      setNewName("");
+      setNewCompany(EMPTY_COMPANY_FORM);
       setError(null);
     },
     onError: (err) => {
@@ -31,6 +43,18 @@ export default function CompaniesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["companies"] });
       setEditingId(null);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteCompany,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["companies"] });
+      setError(null);
+      if (editingId !== null) setEditingId(null);
+    },
+    onError: (err) => {
+      setError(err.response?.data?.detail ?? "Failed to delete company.");
     },
   });
 
@@ -64,19 +88,50 @@ export default function CompaniesPage() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (newName.trim()) createMutation.mutate({ name: newName.trim() });
+          if (!newCompany.name.trim()) return;
+          createMutation.mutate({
+            name: newCompany.name.trim(),
+            website_url: newCompany.website_url.trim() || null,
+            ats_type: newCompany.ats_type || null,
+            ats_id: newCompany.ats_id.trim() || null,
+          });
         }}
-        className="flex gap-2 mb-4"
+        className="flex flex-wrap gap-2 mb-4 items-end"
       >
         <input
-          value={newName}
-          onChange={(e) => setNewName(e.target.value)}
+          value={newCompany.name}
+          onChange={(e) => setNewCompany((d) => ({ ...d, name: e.target.value }))}
           placeholder="Company name"
-          className="border rounded px-3 py-1.5 text-sm flex-1 max-w-xs"
+          className="border rounded px-3 py-1.5 text-sm flex-1 min-w-56"
+        />
+        <input
+          value={newCompany.website_url}
+          onChange={(e) => setNewCompany((d) => ({ ...d, website_url: e.target.value }))}
+          placeholder="Website URL"
+          className="border rounded px-3 py-1.5 text-sm flex-1 min-w-56"
+        />
+        <select
+          value={newCompany.ats_type}
+          onChange={(e) => setNewCompany((d) => ({ ...d, ats_type: e.target.value }))}
+          className="border rounded px-3 py-1.5 text-sm min-w-40"
+        >
+          <option value="">ATS Type</option>
+          <option value="greenhouse">greenhouse</option>
+          <option value="lever">lever</option>
+          <option value="workday">workday</option>
+          <option value="ashby">ashby</option>
+          <option value="custom">custom</option>
+          <option value="html">html</option>
+        </select>
+        <input
+          value={newCompany.ats_id}
+          onChange={(e) => setNewCompany((d) => ({ ...d, ats_id: e.target.value }))}
+          placeholder="ATS ID"
+          className="border rounded px-3 py-1.5 text-sm min-w-40"
         />
         <button
           type="submit"
-          disabled={createMutation.isPending || !newName.trim()}
+          disabled={createMutation.isPending || !newCompany.name.trim()}
           className="rounded bg-blue-600 text-white px-3 py-1.5 text-sm hover:bg-blue-700 disabled:opacity-50"
         >
           Add
@@ -154,6 +209,7 @@ export default function CompaniesPage() {
                         <option value="greenhouse">greenhouse</option>
                         <option value="lever">lever</option>
                         <option value="workday">workday</option>
+                        <option value="ashby">ashby</option>
                         <option value="custom">custom</option>
                         <option value="html">html</option>
                       </select>
@@ -179,9 +235,27 @@ export default function CompaniesPage() {
                         <button onClick={() => setEditingId(null)} className="text-gray-400 hover:text-gray-600">Cancel</button>
                       </div>
                     ) : (
-                      <button onClick={() => startEdit(company)} className="text-xs text-gray-500 hover:text-blue-600">
-                        Edit
-                      </button>
+                      <div className="flex gap-3 justify-end text-xs">
+                        <button
+                          onClick={() => startEdit(company)}
+                          className="text-gray-500 hover:text-blue-600"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => {
+                            const confirmed = window.confirm(
+                              `Delete ${company.name}? This removes it from the database and future config sync.`
+                            );
+                            if (confirmed) {
+                              deleteMutation.mutate(company.id);
+                            }
+                          }}
+                          className="text-red-600 hover:text-red-700"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     )}
                   </td>
                 </tr>

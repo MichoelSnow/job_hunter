@@ -21,17 +21,20 @@ class BaseJobScraper(ABC):
         self.company = company
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "Mozilla/5.0 (compatible; job-search-bot/1.0)"})
+        self.last_fetch_succeeded = False
 
     def fetch_jobs(self) -> list[dict[str, Any]]:
         """Fetch and normalize all current job listings for this company."""
         try:
             raw = self._fetch_raw()
             normalized = [self.normalize(item) for item in raw]
+            self.last_fetch_succeeded = True
             logger.info(
                 "Scraped %d jobs from %s", len(normalized), self.company.get("name")
             )
             return normalized
         except Exception:
+            self.last_fetch_succeeded = False
             logger.exception(
                 "Scraper failed for company=%s", self.company.get("name")
             )

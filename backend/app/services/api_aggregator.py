@@ -206,26 +206,92 @@ def _load_companies() -> list[dict]:
         return json.load(f).get("companies", [])
 
 
-def run_company_scrape() -> list[dict]:
+def _load_company_config_map() -> dict[str, dict[str, Any]]:
+    companies = _load_companies()
+    return {
+        c.get("name"): c
+        for c in companies
+        if isinstance(c, dict) and c.get("name")
+    }
+
+
+def _load_companies_for_scrape() -> list[dict]:
     """
-    Scrape all companies in companies.json that have an ats_id set.
-    Companies with ats_type='custom' and no ats_id are skipped until
-    their HTML selectors are configured.
-    Returns a list of normalized job dicts.
+    Load scrape targets from DB (Companies page state), with config fallback for
+    scraper-only fields that are not persisted in the DB model.
+    """
+    from app.db.session import SessionLocal
+    from app.models.company import Company
+    from app.services.company_enrichment import enrich_companies_from_config
+
+    config_map = _load_company_config_map()
+    db = SessionLocal()
+    try:
+        enrich_companies_from_config(db)
+        rows = db.query(Company).filter(Company.scraper_enabled == True).all()  # noqa: E712
+        companies: list[dict] = []
+        for row in rows:
+            config = config_map.get(row.name, {})
+            merged = {
+                "name": row.name,
+                "industry": row.industry,
+                "ats_type": row.ats_type or config.get("ats_type"),
+                "ats_id": row.ats_id or config.get("ats_id"),
+                "careers_url": row.careers_page_url or row.website_url or config.get("careers_url"),
+                # Not currently editable in Companies UI; keep config fallback.
+                "workday_board": config.get("workday_board"),
+                "workday_instance": config.get("workday_instance"),
+                "html_selectors": config.get("html_selectors"),
+            }
+            companies.append(merged)
+        return companies
+    finally:
+        db.close()
+
+
+def _source_for_company(company: dict[str, Any]) -> str:
+    ats_type = (company.get("ats_type") or "custom").lower()
+    if ats_type in {"greenhouse", "lever", "workday", "ashby"}:
+        return ats_type
+    return "html_scraper"
+
+
+def run_company_scrape() -> tuple[list[dict], dict[tuple[str, str], set[str]]]:
+    """
+    Scrape all enabled companies from the DB (Companies page settings).
+    For fields that are not persisted in DB (e.g. workday_board/html_selectors),
+    config/companies.json is used as fallback metadata.
+    Returns:
+      - list of normalized job dicts
+      - observed external_ids per (company_name, source) for successful scrapes
     """
     from app.services.scraper import get_scraper
 
-    companies = _load_companies()
-    enabled = [c for c in companies if c.get("ats_id")]
+    companies = _load_companies_for_scrape()
+    enabled: list[dict] = []
+    for company in companies:
+        ats_type = (company.get("ats_type") or "custom").lower()
+        if ats_type in {"greenhouse", "lever", "workday", "ashby"} and company.get("ats_id"):
+            enabled.append(company)
+        elif ats_type in {"custom", "html"} and company.get("careers_url") and company.get("html_selectors"):
+            enabled.append(company)
 
     all_jobs: list[dict] = []
     seen_ids: set[str] = set()
+    observed_external_ids: dict[tuple[str, str], set[str]] = {}
 
     for i, company in enumerate(enabled, 1):
         name = company.get("name", "unknown")
         _set_status(step=f"Scraping {name} ({i}/{len(enabled)})")
         scraper = get_scraper(company)
         jobs = scraper.fetch_jobs()
+        if scraper.last_fetch_succeeded:
+            key = (name, _source_for_company(company))
+            observed_external_ids[key] = {
+                job.get("external_id", "")
+                for job in jobs
+                if job.get("external_id")
+            }
         for job in jobs:
             ext_id = job.get("external_id", "")
             if ext_id and ext_id not in seen_ids:
@@ -233,7 +299,7 @@ def run_company_scrape() -> list[dict]:
                 all_jobs.append(job)
 
     logger.info("Company scrape complete: %d unique jobs from %d companies", len(all_jobs), len(enabled))
-    return all_jobs
+    return all_jobs, observed_external_ids
 
 
 def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> None:
@@ -243,7 +309,11 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
     from app.db.session import SessionLocal
     from app.services.company_enrichment import enrich_companies_from_config
     from app.services.job_filter import JobFilter
-    from app.services.job_store import bulk_upsert_jobs, record_api_usage
+    from app.services.job_store import (
+        bulk_upsert_jobs,
+        mark_missing_scraped_jobs_closed,
+        record_api_usage,
+    )
 
     if not fetch_api and not fetch_scrapers:
         raise ValueError("At least one discovery source must be enabled")
@@ -266,9 +336,10 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
         api_jobs = JobAPIAggregator().search_all() if fetch_api else []
 
         scraped_jobs: list[dict] = []
+        observed_scraped_ids: dict[tuple[str, str], set[str]] = {}
         if fetch_scrapers:
             _set_status(step="Scraping company job boards...")
-            scraped_jobs = run_company_scrape()
+            scraped_jobs, observed_scraped_ids = run_company_scrape()
         all_jobs = api_jobs + scraped_jobs
 
         logger.info(
@@ -287,6 +358,12 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
         try:
             inserted, updated = bulk_upsert_jobs(db, filtered_jobs)
             enrich_companies_from_config(db)
+            if fetch_scrapers:
+                mark_missing_scraped_jobs_closed(
+                    db,
+                    observed_external_ids=observed_scraped_ids,
+                    closed_on=date.today(),
+                )
 
             sources: dict[str, int] = {}
             for job in all_jobs:

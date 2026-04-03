@@ -1,3 +1,4 @@
+from app.services.scraper.ashby import AshbyScraper
 from app.services.scraper.base import BaseJobScraper
 from app.services.scraper.greenhouse import GreenhouseScraper
 from app.services.scraper.html_scraper import HtmlScraper
@@ -14,10 +15,13 @@ def get_scraper(company: dict) -> BaseJobScraper:
         return LeverScraper(company)
     if ats_type == "workday":
         return WorkdayScraper(company)
+    if ats_type == "ashby":
+        return AshbyScraper(company)
     return HtmlScraper(company)
 
 
 __all__ = [
+    "AshbyScraper",
     "BaseJobScraper",
     "GreenhouseScraper",
     "HtmlScraper",

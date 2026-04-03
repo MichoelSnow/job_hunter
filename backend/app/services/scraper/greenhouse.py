@@ -3,7 +3,7 @@ import logging
 from datetime import date
 from typing import Any
 
-from app.services.job_normalization import html_to_text, infer_work_arrangement
+from app.services.job_normalization import extract_salary_from_text, html_to_text, infer_work_arrangement
 from app.services.scraper.base import BaseJobScraper
 
 logger = logging.getLogger(__name__)
@@ -29,6 +29,7 @@ class GreenhouseScraper(BaseJobScraper):
         location_name = location.get("name") if isinstance(location, dict) else str(location)
         description = html_to_text(raw.get("content"))
         title = raw.get("title") or ""
+        salary_min, salary_max, salary_period, salary_currency = extract_salary_from_text(description)
         return {
             "external_id": f"gh_{raw.get('id')}",
             "title": title,
@@ -39,6 +40,10 @@ class GreenhouseScraper(BaseJobScraper):
                 location=location_name,
                 description=description,
             ),
+            "salary_min": salary_min,
+            "salary_max": salary_max,
+            "salary_currency": salary_currency or "USD",
+            "salary_period": salary_period,
             "application_url": raw.get("absolute_url") or "",
             "source": "greenhouse",
             "source_url": raw.get("absolute_url"),

@@ -1,21 +1,106 @@
 import logging
+from html import escape
+from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from sqlalchemy import asc, desc, func
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.models.company import Company
 from app.models.job import Job
 from app.schemas.job import JobListResponse, JobResponse
-from app.services.job_normalization import html_to_text
+from app.services.job_normalization import html_to_text, sanitize_description_html
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
 
-def _sanitize_job_response(job: Job) -> JobResponse:
+def _sanitize_job_response(job: Job, *, include_rich_description: bool) -> JobResponse:
     payload = JobResponse.model_validate(job, from_attributes=True).model_dump()
     payload["description"] = html_to_text(payload.get("description"))
+    if include_rich_description:
+        payload["description_html"] = _extract_description_html(job)
     return JobResponse(**payload)
+
+
+def _extract_description_html(job: Job) -> str | None:
+    raw_data = job.raw_data if isinstance(job.raw_data, dict) else {}
+    normalized = sanitize_description_html(raw_data.get("normalized_description_html"))
+    if normalized:
+        return normalized
+
+    combined = _combine_raw_description_html(raw_data)
+    if combined:
+        return sanitize_description_html(combined)
+
+    fallback = sanitize_description_html(job.description)
+    return fallback or None
+
+
+def _combine_raw_description_html(raw_data: dict) -> str:
+    blocks: list[str] = []
+
+    for key in (
+        "content",
+        "description",
+        "descriptionHtml",
+        "description_html",
+        "job_description",
+        "additional",
+        "opening",
+    ):
+        value = raw_data.get(key)
+        if value:
+            blocks.append(str(value))
+
+    lists = raw_data.get("lists")
+    if isinstance(lists, list):
+        for section in lists:
+            if not isinstance(section, dict):
+                continue
+            heading = html_to_text(section.get("text"))
+            content = section.get("content")
+            if heading:
+                blocks.append(f"<h3>{escape(heading)}</h3>")
+            if content:
+                blocks.append(f"<ul>{content}</ul>")
+
+    return "\n".join(blocks).strip()
+
+
+def _apply_job_sorting(
+    query,
+    *,
+    sort_by: str | None,
+    sort_direction: Literal["asc", "desc"],
+):
+    if not sort_by:
+        return query.order_by(Job.overall_match_score.desc().nulls_last(), Job.id.desc())
+
+    sortable_columns = {
+        "title": Job.title,
+        "location": Job.location,
+        "work_arrangement": Job.work_arrangement,
+        "source": Job.source,
+        "posted_date": Job.posted_date,
+        "closed_date": Job.closed_date,
+        "discovered_date": Job.discovered_date,
+        "overall_match_score": Job.overall_match_score,
+        "salary": func.coalesce(Job.salary_max, Job.salary_min),
+    }
+
+    if sort_by == "company_name":
+        query = query.outerjoin(Company, Job.company_id == Company.id)
+        sort_expr = Company.name
+    else:
+        sort_expr = sortable_columns.get(sort_by)
+
+    if sort_expr is None:
+        return query.order_by(Job.overall_match_score.desc().nulls_last(), Job.id.desc())
+
+    ordered = asc(sort_expr) if sort_direction == "asc" else desc(sort_expr)
+    return query.order_by(ordered.nulls_last(), Job.id.desc())
 
 
 @router.get("", response_model=JobListResponse)
@@ -26,6 +111,11 @@ def list_jobs(
     location: str | None = None,
     is_active: bool | None = Query(True),
     days: int | None = Query(None, description="Limit to jobs discovered in the last N days"),
+    sort_by: str | None = Query(
+        None,
+        pattern="^(title|company_name|location|work_arrangement|salary|source|posted_date|closed_date|discovered_date|overall_match_score)$",
+    ),
+    sort_direction: Literal["asc", "desc"] = Query("desc"),
     db: Session = Depends(get_db),
 ) -> JobListResponse:
     """List jobs with optional filters. Defaults to active jobs ordered by match score."""
@@ -44,13 +134,16 @@ def list_jobs(
         query = query.filter(Job.discovered_date >= cutoff)
 
     total = query.count()
-    items = (
-        query.order_by(Job.overall_match_score.desc().nulls_last())
-        .offset(skip)
-        .limit(limit)
-        .all()
+    sorted_query = _apply_job_sorting(
+        query,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
-    return JobListResponse(total=total, items=[_sanitize_job_response(item) for item in items])
+    items = sorted_query.offset(skip).limit(limit).all()
+    return JobListResponse(
+        total=total,
+        items=[_sanitize_job_response(item, include_rich_description=False) for item in items],
+    )
 
 
 @router.get("/{job_id}", response_model=JobResponse)
@@ -59,7 +152,7 @@ def get_job(job_id: int, db: Session = Depends(get_db)) -> Job:
     job = db.get(Job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    return _sanitize_job_response(job)
+    return _sanitize_job_response(job, include_rich_description=True)
 
 
 @router.post("/refresh/apis")

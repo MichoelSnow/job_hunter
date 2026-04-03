@@ -1,10 +1,18 @@
+from datetime import date
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.db.base import Base
 import app.models  # noqa: F401 — register all models
-from app.services.job_store import bulk_upsert_jobs, record_api_usage, upsert_company, upsert_job
+from app.services.job_store import (
+    bulk_upsert_jobs,
+    mark_missing_scraped_jobs_closed,
+    record_api_usage,
+    upsert_company,
+    upsert_job,
+)
 
 
 @pytest.fixture
@@ -105,6 +113,18 @@ class TestUpsertJob:
         assert created1 is True
         assert created2 is True
 
+    def test_existing_closed_job_reopens_when_seen_again(self, db):
+        from app.models.job import Job
+
+        upsert_job(db, _job(source="lever", closed_date="2026-04-01"), company_id=None)
+        db.commit()
+        upsert_job(db, _job(source="lever"), company_id=None)
+        db.commit()
+
+        job = db.query(Job).filter(Job.external_id == "js_abc").first()
+        assert job is not None
+        assert job.closed_date is None
+
 
 class TestBulkUpsertJobs:
     def test_inserts_multiple_jobs(self, db):
@@ -146,3 +166,50 @@ class TestRecordApiUsage:
         db.commit()
         row = db.query(ApiUsageTracking).filter(ApiUsageTracking.api_name == "jsearch_api").first()
         assert row.request_count == 8
+
+
+class TestMarkMissingScrapedJobsClosed:
+    def test_marks_missing_jobs_closed_for_company_and_source(self, db):
+        from app.models.job import Job
+
+        bulk_upsert_jobs(
+            db,
+            [
+                _job(external_id="lv_a", source="lever", company_name="Acme"),
+                _job(external_id="lv_b", source="lever", company_name="Acme"),
+            ],
+        )
+        closed = mark_missing_scraped_jobs_closed(
+            db,
+            observed_external_ids={("Acme", "lever"): {"lv_a"}},
+            closed_on=date(2026, 4, 2),
+        )
+        db.commit()
+
+        assert closed == 1
+        a = db.query(Job).filter(Job.external_id == "lv_a").first()
+        b = db.query(Job).filter(Job.external_id == "lv_b").first()
+        assert a is not None and b is not None
+        assert a.closed_date is None
+        assert b.closed_date == date(2026, 4, 2)
+
+    def test_empty_observed_set_closes_all_current_jobs(self, db):
+        from app.models.job import Job
+
+        bulk_upsert_jobs(
+            db,
+            [
+                _job(external_id="gh_a", source="greenhouse", company_name="Beta"),
+                _job(external_id="gh_b", source="greenhouse", company_name="Beta"),
+            ],
+        )
+        closed = mark_missing_scraped_jobs_closed(
+            db,
+            observed_external_ids={("Beta", "greenhouse"): set()},
+            closed_on=date(2026, 4, 2),
+        )
+        db.commit()
+
+        assert closed == 2
+        rows = db.query(Job).filter(Job.source == "greenhouse").all()
+        assert all(job.closed_date == date(2026, 4, 2) for job in rows)

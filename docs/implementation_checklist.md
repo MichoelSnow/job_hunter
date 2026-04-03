@@ -127,7 +127,7 @@ Tracks build progress phase by phase. Items marked `[x]` are complete; `[~]` mea
   - [x] Status history timeline
 - [x] Companies page (`CompaniesPage.jsx`)
   - [x] List companies with ATS metadata
-  - [x] Add / edit company
+  - [x] Add / edit / delete company (delete persists via tombstone to prevent config re-seed)
 - [x] Settings page (`SettingsPage.jsx`)
   - [x] Criteria management (add / edit / delete hard and soft criteria)
   - [x] API usage stats display

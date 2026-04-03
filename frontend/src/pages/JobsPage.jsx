@@ -27,6 +27,7 @@ const COLUMN_DEFS = [
   { key: "salary", label: "Salary", sortable: true },
   { key: "source", label: "Source", sortable: true },
   { key: "posted_date", label: "Posted", sortable: true },
+  { key: "closed_date", label: "Closed", sortable: true },
   { key: "discovered_date", label: "Discovered", sortable: true },
   { key: "overall_match_score", label: "Score", sortable: true, align: "right" },
 ];
@@ -122,6 +123,10 @@ function JobDetailPanel({ jobId, onClose, onHideToggle }) {
               <div>{job.discovered_date ?? "—"}</div>
             </div>
             <div>
+              <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Closed</div>
+              <div>{job.closed_date ?? "—"}</div>
+            </div>
+            <div>
               <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Match Score</div>
               <div>
                 <ScoreBadge score={job.overall_match_score} />
@@ -130,11 +135,18 @@ function JobDetailPanel({ jobId, onClose, onHideToggle }) {
           </div>
           <div>
             <div className="text-xs text-gray-400 uppercase tracking-wide mb-1">Description</div>
-            <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{job.description || "—"}</p>
+            {job.description_html ? (
+              <div
+                className="text-gray-700 leading-relaxed whitespace-normal [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1 [&_strong]:font-semibold [&_em]:italic"
+                dangerouslySetInnerHTML={{ __html: job.description_html }}
+              />
+            ) : (
+              <p className="text-gray-700 whitespace-pre-wrap leading-relaxed">{job.description || "—"}</p>
+            )}
           </div>
           <div className="flex gap-2 pt-2">
             <a
-              href={job.application_url}
+              href={job.source_url || job.application_url}
               target="_blank"
               rel="noreferrer"
               className="flex-1 text-center rounded bg-blue-600 text-white py-1.5 text-sm font-medium hover:bg-blue-700"
@@ -171,12 +183,6 @@ function SortableHeader({ column, sortState, onToggleSort }) {
   );
 }
 
-function getSortValue(job, key) {
-  if (key === "salary") return job.salary_max ?? job.salary_min ?? -1;
-  if (key === "overall_match_score") return job.overall_match_score ?? -1;
-  return job[key] ?? "";
-}
-
 export default function JobsPage() {
   const queryClient = useQueryClient();
   const [filters, setFilters] = useState({
@@ -201,6 +207,7 @@ export default function JobsPage() {
     ...(filters.location !== "" && { location: filters.location }),
     ...(filters.days !== "" && { days: Number(filters.days) }),
     ...(isActiveParam !== undefined && { is_active: isActiveParam }),
+    ...(sortState.key && { sort_by: sortState.key, sort_direction: sortState.direction }),
   };
 
   const { data, isLoading, isError } = useQuery({
@@ -240,7 +247,15 @@ export default function JobsPage() {
 
   useEffect(() => {
     setPage(1);
-  }, [filters.min_score, filters.location, filters.days, filters.work_arrangement, statusFilter]);
+  }, [
+    filters.min_score,
+    filters.location,
+    filters.days,
+    filters.work_arrangement,
+    statusFilter,
+    sortState.key,
+    sortState.direction,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -280,18 +295,6 @@ export default function JobsPage() {
   const filtered = filters.work_arrangement
     ? jobs.filter((job) => job.work_arrangement === filters.work_arrangement)
     : jobs;
-
-  const sorted = sortState.key
-    ? [...filtered].sort((a, b) => {
-        const aVal = getSortValue(a, sortState.key);
-        const bVal = getSortValue(b, sortState.key);
-        if (typeof aVal === "number" && typeof bVal === "number") {
-          return sortState.direction === "asc" ? aVal - bVal : bVal - aVal;
-        }
-        const result = String(aVal).localeCompare(String(bVal));
-        return sortState.direction === "asc" ? result : -result;
-      })
-    : filtered;
 
   const total = data?.total ?? 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -463,14 +466,14 @@ export default function JobsPage() {
                     Loading...
                   </td>
                 </tr>
-              ) : sorted.length === 0 ? (
+              ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={visibleColumnDefs.length + 1} className="px-4 py-8 text-center text-gray-400">
                     No jobs found.
                   </td>
                 </tr>
               ) : (
-                sorted.map((job) => (
+                filtered.map((job) => (
                   <tr
                     key={job.id}
                     className={`border-b last:border-0 hover:bg-gray-50 cursor-pointer ${
@@ -496,6 +499,9 @@ export default function JobsPage() {
                     {visibleColumns.source && <td className="px-4 py-2 text-gray-600">{job.source ?? "—"}</td>}
                     {visibleColumns.posted_date && (
                       <td className="px-4 py-2 text-gray-500">{job.posted_date ?? "—"}</td>
+                    )}
+                    {visibleColumns.closed_date && (
+                      <td className="px-4 py-2 text-gray-500">{job.closed_date ?? "—"}</td>
                     )}
                     {visibleColumns.discovered_date && (
                       <td className="px-4 py-2 text-gray-500">{job.discovered_date ?? "—"}</td>

@@ -47,6 +47,7 @@ class Job(Base):
     experience_level: Mapped[str | None] = mapped_column(String(100))
     posted_date: Mapped[date | None] = mapped_column(Date)
     discovered_date: Mapped[date] = mapped_column(Date, nullable=False)
+    closed_date: Mapped[date | None] = mapped_column(Date)
     expiration_date: Mapped[date | None] = mapped_column(Date)
     application_url: Mapped[str] = mapped_column(String(1000), nullable=False)
     # 'jsearch_api', 'greenhouse', 'lever', 'html_scraper', 'manual'
@@ -75,6 +76,7 @@ class Job(Base):
         Index("idx_jobs_company", "company_id"),
         Index("idx_jobs_posted_date", "posted_date"),
         Index("idx_jobs_discovered_date", "discovered_date"),
+        Index("idx_jobs_closed_date", "closed_date"),
         Index("idx_jobs_match_score", "overall_match_score"),
         Index("idx_jobs_is_active", "is_active"),
         Index("idx_jobs_location", "location"),
