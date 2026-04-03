@@ -13,7 +13,6 @@ Tracks build progress phase by phase. Items marked `[x]` are complete; `[~]` mea
 - [x] Initialize React app with Vite + pnpm
 - [x] Set up SQLite database with initial schema (no Alembic until Phase 6)
 - [x] Create `config/user_profile.yaml` with user identity and skills
-- [x] Create `config/companies.json` seed list with ATS metadata
 - [x] Create `config/skill_taxonomy.json`
 - [x] Create `.env.example`
 - [x] Write README with setup and run instructions
@@ -127,7 +126,7 @@ Tracks build progress phase by phase. Items marked `[x]` are complete; `[~]` mea
   - [x] Status history timeline
 - [x] Companies page (`CompaniesPage.jsx`)
   - [x] List companies with ATS metadata
-  - [x] Add / edit / delete company (delete persists via tombstone to prevent config re-seed)
+  - [x] Add / edit / delete company
 - [x] Settings page (`SettingsPage.jsx`)
   - [x] Criteria management (add / edit / delete hard and soft criteria)
   - [x] API usage stats display
@@ -139,10 +138,9 @@ Tracks build progress phase by phase. Items marked `[x]` are complete; `[~]` mea
 
 - [x] Greenhouse boards JSON API scraper (`greenhouse.py`)
 - [x] Lever postings JSON API scraper (`lever.py`)
-- [x] Workday scraper (`workday.py`) — paginated POST API, tenant/board/instance from `companies.json`
+- [x] Workday scraper (`workday.py`) — paginated POST API, tenant/board/instance from company table fields
 - [x] HTML fallback scraper base (`html_scraper.py`)
-  - [x] Per-company CSS selector config (via `html_selectors` key in `companies.json`)
-- [x] `companies.json` seed list with `ats_type` + `ats_id` for all priority companies
+  - [x] Per-company CSS selector config (via `companies.html_selectors`)
 - [x] Scraper dispatcher (`get_scraper()` in `scraper/__init__.py`)
 - [x] Wire company scrapers into `run_job_discovery()`
 - [x] Verified Greenhouse returns results: Oscar (280 jobs), Flatiron (11), Zocdoc (76), Maven Clinic (20), Komodo Health (38)
@@ -155,7 +153,7 @@ Tracks build progress phase by phase. Items marked `[x]` are complete; `[~]` mea
 
 ### Companies not scraped directly — covered by JSearch/Serply
 
-The large legacy health systems below have been removed from `companies.json`. Their ATS portals (Workday, Taleo, iCIMS) are high-effort to scrape and roles from these organizations will surface via the Google Jobs API sources instead.
+The large legacy health systems below are not scraped directly. Their ATS portals (Workday, Taleo, iCIMS) are high-effort to scrape and roles from these organizations will surface via the Google Jobs API sources instead.
 
 - Mount Sinai Health System
 - NYC Health + Hospitals

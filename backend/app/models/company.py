@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, String, Text, func
+from sqlalchemy import JSON, Boolean, DateTime, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -27,6 +27,9 @@ class Company(Base):
     description: Mapped[str | None] = mapped_column(Text)
     ats_type: Mapped[str | None] = mapped_column(String(50))  # 'greenhouse', 'lever', 'workday', 'custom'
     ats_id: Mapped[str | None] = mapped_column(String(255))
+    workday_board: Mapped[str | None] = mapped_column(String(255))
+    workday_instance: Mapped[str | None] = mapped_column(String(50))
+    html_selectors: Mapped[dict[str, str] | None] = mapped_column(JSON)
     is_priority: Mapped[bool] = mapped_column(Boolean, default=False)
     scraper_enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     last_scraped_at: Mapped[datetime | None] = mapped_column(DateTime)

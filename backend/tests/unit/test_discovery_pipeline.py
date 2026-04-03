@@ -534,6 +534,60 @@ class TestCompanyScrape:
         # First board fails (TestCo_Careers), second fallback uses TestCoCareers
         assert mock_post.call_count == 2
 
+    def test_workday_scraper_discovers_cxs_endpoint_from_careers_html(self):
+        from app.services.scraper.workday import WorkdayScraper
+
+        company = {
+            "name": "Tempus",
+            "ats_type": "workday",
+            "ats_id": "tempus",
+            "workday_board": "Tempus_Careers",
+            "workday_instance": "wd5",
+            "careers_url": "https://www.tempus.com/careers/",
+        }
+        scraper = WorkdayScraper(company)
+
+        landing = _mock_http_response({})
+        landing.url = "https://www.tempus.com/careers/"
+        landing.text = (
+            '<script>const endpoint="https://tempus.wd5.myworkdayjobs.com/'
+            'wday/cxs/tempus/TempusCareers/jobs";</script>'
+        )
+        jobs_resp = _mock_http_response({"total": 0, "jobPostings": []})
+
+        with patch("requests.Session.get", return_value=landing), \
+             patch("requests.Session.post", return_value=jobs_resp) as mock_post:
+            jobs = scraper.fetch_jobs()
+
+        assert jobs == []
+        called_url = mock_post.call_args.args[0]
+        assert called_url == "https://tempus.wd5.myworkdayjobs.com/wday/cxs/tempus/TempusCareers/jobs"
+
+    def test_workday_scraper_logs_body_snippet_on_board_failure(self):
+        from app.services.scraper.workday import WorkdayScraper
+
+        company = {
+            "name": "Tempus",
+            "ats_type": "workday",
+            "ats_id": "tempus",
+            "workday_board": "Tempus_Careers",
+            "workday_instance": "wd5",
+            "careers_url": "https://www.tempus.com/careers/",
+        }
+        scraper = WorkdayScraper(company)
+
+        landing = _mock_http_response({})
+        landing.url = "https://www.tempus.com/careers/"
+        landing.text = ""
+        failure = _mock_http_response({"error": "bad request"}, status_code=400)
+        failure.text = "bad request from workday"
+
+        with patch("requests.Session.get", return_value=landing), \
+             patch("requests.Session.post", return_value=failure):
+            jobs = scraper.fetch_jobs()
+
+        assert jobs == []
+
     def test_ashby_scraper_normalizes_jobs(self):
         from app.services.scraper.ashby import AshbyScraper
 
@@ -541,35 +595,51 @@ class TestCompanyScrape:
         scraper = AshbyScraper(company)
 
         response_data = {
-            "data": {
-                "jobBoard": {
-                    "jobPostings": [
-                        {
-                            "id": "ashby-job-1",
-                            "title": "Senior Product Manager",
-                            "locationName": "New York, NY",
-                            "workplaceType": "Hybrid",
-                            "employmentType": "FullTime",
-                            "compensationTierSummary": (
-                                "The target base salary for this position ranges from $170,000 to $200,000."
-                            ),
-                        }
-                    ]
+            "apiVersion": "1",
+            "jobs": [
+                {
+                    "title": "Billing Operations Manager",
+                    "location": "New York City Office",
+                    "workplaceType": "Hybrid",
+                    "employmentType": "FullTime",
+                    "descriptionPlain": "Lead billing operations.",
+                    "descriptionHtml": "<p><strong>Lead billing operations.</strong></p>",
+                    "publishedAt": "2026-03-25T12:00:00.000+00:00",
+                    "jobUrl": (
+                        "https://jobs.ashbyhq.com/allarahealth/"
+                        "c162a840-f144-40d6-bc8e-ce643a998ba5"
+                    ),
+                    "applyUrl": (
+                        "https://jobs.ashbyhq.com/allarahealth/"
+                        "c162a840-f144-40d6-bc8e-ce643a998ba5/application"
+                    ),
+                    "compensation": {
+                        "compensationTierSummary": "$170,000 - $200,000",
+                        "scrapeableCompensationSalarySummary": "$170,000 - $200,000",
+                    },
                 }
-            }
+            ],
         }
 
-        with patch("requests.Session.post") as mock_post:
-            mock_post.return_value = _mock_http_response(response_data)
+        with patch("requests.Session.get") as mock_get:
+            mock_get.return_value = _mock_http_response(response_data)
             jobs = scraper.fetch_jobs()
 
         assert len(jobs) == 1
         job = jobs[0]
         assert job["source"] == "ashby"
-        assert job["external_id"] == "as_ashby-job-1"
-        assert job["application_url"] == "https://jobs.ashbyhq.com/allarahealth/ashby-job-1"
-        assert job["source_url"] == "https://jobs.ashbyhq.com/allarahealth/ashby-job-1"
+        assert job["external_id"] == "as_c162a840-f144-40d6-bc8e-ce643a998ba5"
+        assert (
+            job["application_url"]
+            == "https://jobs.ashbyhq.com/allarahealth/c162a840-f144-40d6-bc8e-ce643a998ba5"
+        )
+        assert (
+            job["source_url"]
+            == "https://jobs.ashbyhq.com/allarahealth/c162a840-f144-40d6-bc8e-ce643a998ba5"
+        )
         assert job["employment_type"] == "fulltime"
+        assert job["description"] == "Lead billing operations."
+        assert job["posted_date"] == "2026-03-25"
         assert job["salary_min"] == 170000
         assert job["salary_max"] == 200000
 
@@ -614,13 +684,6 @@ class TestCompanyScrape:
         assert job["salary_period"] == "hour"
         assert job["application_url"] == "https://www.testco.com/jobs/1"
 
-    def test_companies_json_path_resolves(self):
-        """Regression: _load_companies used parents[4] (wrong) instead of parents[3]."""
-        from app.services.api_aggregator import _load_companies
-        companies = _load_companies()
-        assert isinstance(companies, list)
-        assert len(companies) > 0, "companies.json not found or empty — check path in _load_companies()"
-
     def test_load_companies_for_scrape_uses_db_values(self, db_session):
         from app.models.company import Company
         from app.services.api_aggregator import _load_companies_for_scrape
@@ -646,7 +709,7 @@ class TestCompanyScrape:
         assert acme["ats_type"] == "lever"
         assert acme["careers_url"] == "https://jobs.lever.co/acme"
 
-    def test_load_companies_for_scrape_uses_config_fallback(self, db_session):
+    def test_load_companies_for_scrape_uses_db_scraper_fields(self, db_session):
         from app.models.company import Company
         from app.services.api_aggregator import _load_companies_for_scrape
 
@@ -655,37 +718,81 @@ class TestCompanyScrape:
                 name="Temp Co",
                 ats_type="workday",
                 ats_id="tempco",
+                workday_board="Temp_Careers",
+                workday_instance="wd5",
                 scraper_enabled=True,
             )
         )
         db_session.commit()
 
         db_session.close = lambda: None
-        with patch("app.db.session.SessionLocal", return_value=db_session), \
-             patch(
-                 "app.services.api_aggregator._load_company_config_map",
-                 return_value={
-                     "Temp Co": {
-                         "careers_url": "https://tempco.wd5.myworkdayjobs.com/Temp_Careers",
-                         "workday_board": "Temp_Careers",
-                         "workday_instance": "wd5",
-                     }
-                 },
-             ):
+        with patch("app.db.session.SessionLocal", return_value=db_session):
             companies = _load_companies_for_scrape()
 
         tempco = next((c for c in companies if c.get("name") == "Temp Co"), None)
         assert tempco is not None
-        assert tempco["careers_url"] == "https://tempco.wd5.myworkdayjobs.com/Temp_Careers"
+        assert tempco["careers_url"] is None
         assert tempco["workday_board"] == "Temp_Careers"
         assert tempco["workday_instance"] == "wd5"
 
-    def test_load_companies_returns_enabled_entries(self):
-        """All companies with ats_id set should be returned for scraping."""
-        from app.services.api_aggregator import _load_companies
-        companies = _load_companies()
-        enabled = [c for c in companies if c.get("ats_id")]
-        assert len(enabled) >= 3, "Expected at least 3 scrapeable companies"
+    def test_enrich_companies_does_not_restore_cleared_ats_fields(self, db_session):
+        from app.models.company import Company
+        from app.services.api_aggregator import _load_companies_for_scrape
+
+        db_session.add(
+            Company(
+                name="Temp Co",
+                ats_type=None,
+                ats_id=None,
+                website_url=None,
+                careers_page_url=None,
+                scraper_enabled=True,
+            )
+        )
+        db_session.commit()
+
+        db_session.close = lambda: None
+        with patch("app.db.session.SessionLocal", return_value=db_session):
+            companies = _load_companies_for_scrape()
+
+        tempco = next((c for c in companies if c.get("name") == "Temp Co"), None)
+        assert tempco is not None
+        assert tempco["ats_type"] is None
+        assert tempco["ats_id"] is None
+        assert tempco["careers_url"] is None
+        assert tempco["workday_board"] is None
+
+    def test_get_scrape_targets_reports_enabled_and_skipped(self, db_session):
+        from app.models.company import Company
+        from app.services.api_aggregator import get_scrape_targets
+
+        db_session.add_all(
+            [
+                Company(name="Good GH", ats_type="greenhouse", ats_id="goodgh", scraper_enabled=True),
+                Company(name="Bad GH", ats_type="greenhouse", ats_id=None, scraper_enabled=True),
+                Company(
+                    name="Good HTML",
+                    ats_type="custom",
+                    careers_page_url="https://example.com/careers",
+                    html_selectors={"job_list": "ul.jobs li", "title": "a.title", "url": "a.title"},
+                    scraper_enabled=True,
+                ),
+                Company(name="Unknown", ats_type=None, ats_id="mystery", scraper_enabled=True),
+            ]
+        )
+        db_session.commit()
+
+        db_session.close = lambda: None
+        with patch("app.db.session.SessionLocal", return_value=db_session):
+            enabled, skipped = get_scrape_targets()
+
+        enabled_names = {c["name"] for c in enabled}
+        assert "Good GH" in enabled_names
+        assert "Good HTML" in enabled_names
+
+        skipped_map = {item["name"]: item["reason"] for item in skipped}
+        assert skipped_map["Bad GH"] == "missing ats_id"
+        assert skipped_map["Unknown"] == "missing or unsupported ats_type"
 
     def test_skill_taxonomy_path_resolves(self):
         """Regression: TAXONOMY_PATH used parents[4] (wrong) instead of parents[3]."""

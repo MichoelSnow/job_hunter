@@ -15,6 +15,9 @@ class CompanyBase(BaseModel):
     description: str | None = None
     ats_type: str | None = None
     ats_id: str | None = None
+    workday_board: str | None = None
+    workday_instance: str | None = None
+    html_selectors: dict[str, str] | None = None
     is_priority: bool = False
 
 

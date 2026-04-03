@@ -193,55 +193,28 @@ def _parse_date(value: str | None) -> str | None:
     return value[:10]
 
 
-def _load_companies() -> list[dict]:
-    """Load company seed list from config/companies.json."""
-    import json
-    from pathlib import Path
-
-    path = Path(__file__).parents[3] / "config" / "companies.json"
-    if not path.exists():
-        logger.warning("companies.json not found at %s", path)
-        return []
-    with path.open() as f:
-        return json.load(f).get("companies", [])
-
-
-def _load_company_config_map() -> dict[str, dict[str, Any]]:
-    companies = _load_companies()
-    return {
-        c.get("name"): c
-        for c in companies
-        if isinstance(c, dict) and c.get("name")
-    }
-
-
 def _load_companies_for_scrape() -> list[dict]:
     """
-    Load scrape targets from DB (Companies page state), with config fallback for
-    scraper-only fields that are not persisted in the DB model.
+    Load scrape targets from DB (Companies page state).
     """
     from app.db.session import SessionLocal
     from app.models.company import Company
-    from app.services.company_enrichment import enrich_companies_from_config
 
-    config_map = _load_company_config_map()
     db = SessionLocal()
     try:
-        enrich_companies_from_config(db)
         rows = db.query(Company).filter(Company.scraper_enabled == True).all()  # noqa: E712
         companies: list[dict] = []
         for row in rows:
-            config = config_map.get(row.name, {})
             merged = {
                 "name": row.name,
                 "industry": row.industry,
-                "ats_type": row.ats_type or config.get("ats_type"),
-                "ats_id": row.ats_id or config.get("ats_id"),
-                "careers_url": row.careers_page_url or row.website_url or config.get("careers_url"),
-                # Not currently editable in Companies UI; keep config fallback.
-                "workday_board": config.get("workday_board"),
-                "workday_instance": config.get("workday_instance"),
-                "html_selectors": config.get("html_selectors"),
+                # DB is authoritative for user-editable scrape fields.
+                "ats_type": row.ats_type,
+                "ats_id": row.ats_id,
+                "careers_url": row.careers_page_url or row.website_url,
+                "workday_board": row.workday_board,
+                "workday_instance": row.workday_instance,
+                "html_selectors": row.html_selectors,
             }
             companies.append(merged)
         return companies
@@ -256,25 +229,81 @@ def _source_for_company(company: dict[str, Any]) -> str:
     return "html_scraper"
 
 
+def get_scrape_targets() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """
+    Build scraper targets from DB companies and return:
+      - enabled targets
+      - skipped targets with reason
+    """
+    companies = _load_companies_for_scrape()
+    enabled: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+
+    for company in companies:
+        ats_type = (company.get("ats_type") or "").strip().lower()
+        if ats_type in {"greenhouse", "lever", "workday", "ashby"}:
+            if company.get("ats_id"):
+                enabled.append(company)
+            else:
+                skipped.append(
+                    {
+                        "name": company.get("name"),
+                        "reason": "missing ats_id",
+                        "ats_type": ats_type,
+                    }
+                )
+            continue
+
+        if ats_type in {"custom", "html"}:
+            has_careers = bool(company.get("careers_url"))
+            has_selectors = bool(company.get("html_selectors"))
+            if has_careers and has_selectors:
+                enabled.append(company)
+            else:
+                missing_parts: list[str] = []
+                if not has_careers:
+                    missing_parts.append("careers_url")
+                if not has_selectors:
+                    missing_parts.append("html_selectors")
+                skipped.append(
+                    {
+                        "name": company.get("name"),
+                        "reason": f"missing {', '.join(missing_parts)}",
+                        "ats_type": ats_type or None,
+                    }
+                )
+            continue
+
+        skipped.append(
+            {
+                "name": company.get("name"),
+                "reason": "missing or unsupported ats_type",
+                "ats_type": ats_type or None,
+            }
+        )
+
+    return enabled, skipped
+
+
 def run_company_scrape() -> tuple[list[dict], dict[tuple[str, str], set[str]]]:
     """
     Scrape all enabled companies from the DB (Companies page settings).
-    For fields that are not persisted in DB (e.g. workday_board/html_selectors),
-    config/companies.json is used as fallback metadata.
     Returns:
       - list of normalized job dicts
       - observed external_ids per (company_name, source) for successful scrapes
     """
     from app.services.scraper import get_scraper
 
-    companies = _load_companies_for_scrape()
-    enabled: list[dict] = []
-    for company in companies:
-        ats_type = (company.get("ats_type") or "custom").lower()
-        if ats_type in {"greenhouse", "lever", "workday", "ashby"} and company.get("ats_id"):
-            enabled.append(company)
-        elif ats_type in {"custom", "html"} and company.get("careers_url") and company.get("html_selectors"):
-            enabled.append(company)
+    enabled, skipped = get_scrape_targets()
+    if skipped:
+        logger.info("Skipping %d companies for scrape due to missing config", len(skipped))
+        for item in skipped:
+            logger.info(
+                "Skipped company=%s ats_type=%s reason=%s",
+                item.get("name"),
+                item.get("ats_type"),
+                item.get("reason"),
+            )
 
     all_jobs: list[dict] = []
     seen_ids: set[str] = set()
@@ -307,7 +336,6 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
     Job discovery pipeline with selectable sources.
     """
     from app.db.session import SessionLocal
-    from app.services.company_enrichment import enrich_companies_from_config
     from app.services.job_filter import JobFilter
     from app.services.job_store import (
         bulk_upsert_jobs,
@@ -357,7 +385,6 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
         db = SessionLocal()
         try:
             inserted, updated = bulk_upsert_jobs(db, filtered_jobs)
-            enrich_companies_from_config(db)
             if fetch_scrapers:
                 mark_missing_scraped_jobs_closed(
                     db,

@@ -345,6 +345,26 @@ class TestJobsAPI:
         assert resp.json() == {"status": "already running"}
         assert called["count"] == 0
 
+    def test_refresh_scrapers_targets_preview(self, client, monkeypatch):
+        from app.services import api_aggregator
+
+        monkeypatch.setattr(
+            api_aggregator,
+            "get_scrape_targets",
+            lambda: (
+                [{"name": "Alpha"}],
+                [{"name": "Beta", "reason": "missing ats_id", "ats_type": "greenhouse"}],
+            ),
+        )
+
+        resp = client.get("/api/jobs/refresh/scrapers/targets")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["enabled_count"] == 1
+        assert body["enabled"] == ["Alpha"]
+        assert body["skipped_count"] == 1
+        assert body["skipped"][0]["name"] == "Beta"
+
 
 # ---------------------------------------------------------------------------
 # Applications
@@ -422,15 +442,10 @@ class TestApplicationsAPI:
 # ---------------------------------------------------------------------------
 
 class TestCompaniesAPI:
-    def test_list_companies_seeded_from_config(self, client):
+    def test_list_companies_empty_when_no_rows(self, client):
         resp = client.get("/api/companies")
         assert resp.status_code == 200
-        companies = resp.json()
-        assert len(companies) > 0
-        oscar = next((c for c in companies if c["name"] == "Oscar Health"), None)
-        assert oscar is not None
-        assert oscar["ats_type"] == "greenhouse"
-        assert oscar["ats_id"] == "oscar"
+        assert resp.json() == []
 
     def test_create_company(self, client):
         resp = client.post("/api/companies", json={"name": "Health Corp"})
@@ -443,6 +458,9 @@ class TestCompaniesAPI:
             "website_url": "https://acme.example.com",
             "ats_type": "lever",
             "ats_id": "acme",
+            "workday_board": "Acme_Careers",
+            "workday_instance": "wd5",
+            "html_selectors": {"job_list": ".jobs li", "title": ".title", "url": "a"},
             "careers_page_url": "https://jobs.lever.co/acme",
             "industry": "healthtech",
             "is_priority": True,
@@ -454,6 +472,9 @@ class TestCompaniesAPI:
         assert body["website_url"] == payload["website_url"]
         assert body["ats_type"] == payload["ats_type"]
         assert body["ats_id"] == payload["ats_id"]
+        assert body["workday_board"] == payload["workday_board"]
+        assert body["workday_instance"] == payload["workday_instance"]
+        assert body["html_selectors"] == payload["html_selectors"]
         assert body["careers_page_url"] == payload["careers_page_url"]
         assert body["industry"] == payload["industry"]
         assert body["is_priority"] is True
@@ -510,20 +531,18 @@ class TestCompaniesAPI:
         assert persisted_job is not None
         assert persisted_job.company_id is None
 
-    def test_delete_seeded_company_stays_deleted_after_enrichment(self, client):
-        companies_resp = client.get("/api/companies")
-        assert companies_resp.status_code == 200
-        companies = companies_resp.json()
-        oscar = next((c for c in companies if c["name"] == "Oscar Health"), None)
-        assert oscar is not None
+    def test_delete_company_remains_deleted(self, client):
+        create_resp = client.post("/api/companies", json={"name": "Delete Again"})
+        assert create_resp.status_code == 201
+        company_id = create_resp.json()["id"]
 
-        delete_resp = client.delete(f"/api/companies/{oscar['id']}")
+        delete_resp = client.delete(f"/api/companies/{company_id}")
         assert delete_resp.status_code == 204
 
         post_delete = client.get("/api/companies")
         assert post_delete.status_code == 200
         names = [company["name"] for company in post_delete.json()]
-        assert "Oscar Health" not in names
+        assert "Delete Again" not in names
 
 
 # ---------------------------------------------------------------------------

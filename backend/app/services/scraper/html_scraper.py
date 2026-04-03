@@ -1,16 +1,15 @@
 """HTML scraping fallback for companies without a public ATS JSON API.
 
-Each company entry in companies.json may include an ``html_selectors`` object:
+`html_selectors` is configured per company in the database/Companies page:
 
-    "html_selectors": {
-        "job_list": "ul.jobs li",          // CSS selector for each job row
-        "title": "a.job-title",            // within each row: job title element
-        "location": "span.location",       // within each row: location element (optional)
-        "url": "a.job-title"               // within each row: element whose href is the apply URL
+    {
+      "job_list": "ul.jobs li",        # selector for each job row
+      "title": "a.job-title",          # title element inside each row
+      "location": "span.location",     # optional location element
+      "url": "a.job-title"             # href source for job URL
     }
 
-The ``careers_url`` field is used as the page to scrape.
-If ``html_selectors`` is absent or ``job_list`` is missing, the scraper logs a warning and returns nothing.
+`careers_url` is the page to scrape. If selectors are missing, scraper skips.
 """
 import logging
 from datetime import date
@@ -25,7 +24,7 @@ logger = logging.getLogger(__name__)
 class HtmlScraper(BaseJobScraper):
     """
     Fallback scraper for custom career pages using per-company CSS selectors.
-    Configure selectors via the ``html_selectors`` key in companies.json.
+    Configure selectors via the `html_selectors` company field.
     """
 
     def _fetch_raw(self) -> list[dict[str, Any]]:

@@ -62,6 +62,7 @@ def create_tables() -> None:
     Base.metadata.create_all(bind=engine)
     if "sqlite" in _database_url:
         _ensure_sqlite_job_columns()
+        _ensure_sqlite_company_columns()
 
 
 def _ensure_sqlite_job_columns() -> None:
@@ -74,3 +75,21 @@ def _ensure_sqlite_job_columns() -> None:
         if "closed_date" not in columns:
             logger.info("Adding missing jobs.closed_date column")
             conn.exec_driver_sql("ALTER TABLE jobs ADD COLUMN closed_date DATE")
+
+
+def _ensure_sqlite_company_columns() -> None:
+    """Best-effort additive company schema updates for local SQLite."""
+    with engine.begin() as conn:
+        columns = {
+            row[1]
+            for row in conn.exec_driver_sql("PRAGMA table_info(companies)").fetchall()
+        }
+        if "workday_board" not in columns:
+            logger.info("Adding missing companies.workday_board column")
+            conn.exec_driver_sql("ALTER TABLE companies ADD COLUMN workday_board VARCHAR(255)")
+        if "workday_instance" not in columns:
+            logger.info("Adding missing companies.workday_instance column")
+            conn.exec_driver_sql("ALTER TABLE companies ADD COLUMN workday_instance VARCHAR(50)")
+        if "html_selectors" not in columns:
+            logger.info("Adding missing companies.html_selectors column")
+            conn.exec_driver_sql("ALTER TABLE companies ADD COLUMN html_selectors JSON")

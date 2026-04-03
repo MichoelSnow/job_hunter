@@ -461,7 +461,7 @@ class JobAPIAggregator:
 2. **Lever postings JSON API** — `https://api.lever.co/v0/postings/{ats_id}?mode=json` — structured JSON, no scraping
 3. **HTML scraping** — `beautifulsoup4` + `lxml`, fallback only for companies with no public ATS API
 
-The `companies.json` seed file includes an `ats_type` field (`"greenhouse"`, `"lever"`, `"custom"`) so the dispatcher knows which path to take without probing.
+The `companies` table includes an `ats_type` field (`"greenhouse"`, `"lever"`, `"custom"`) so the dispatcher knows which path to take without probing.
 
 **Responsibilities**:
 - Dispatch to the correct scraper based on `ats_type`

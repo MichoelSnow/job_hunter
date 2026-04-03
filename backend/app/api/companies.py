@@ -5,10 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.company import Company
-from app.models.company_tombstone import CompanyTombstone
 from app.models.job import Job
 from app.schemas.company import CompanyCreate, CompanyResponse, CompanyUpdate
-from app.services.company_enrichment import enrich_companies_from_config
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/companies", tags=["companies"])
@@ -19,7 +17,6 @@ def list_companies(
     priority_only: bool = False,
     db: Session = Depends(get_db),
 ) -> list[Company]:
-    enrich_companies_from_config(db)
     query = db.query(Company)
     if priority_only:
         query = query.filter(Company.is_priority == True)  # noqa: E712
@@ -31,9 +28,6 @@ def create_company(payload: CompanyCreate, db: Session = Depends(get_db)) -> Com
     existing = db.query(Company).filter(Company.name == payload.name).first()
     if existing:
         raise HTTPException(status_code=409, detail="Company already exists")
-    tombstone = db.query(CompanyTombstone).filter(CompanyTombstone.name == payload.name).first()
-    if tombstone:
-        db.delete(tombstone)
     company = Company(**payload.model_dump(exclude_none=True))
     db.add(company)
     db.commit()
@@ -43,7 +37,6 @@ def create_company(payload: CompanyCreate, db: Session = Depends(get_db)) -> Com
 
 @router.get("/{company_id}", response_model=CompanyResponse)
 def get_company(company_id: int, db: Session = Depends(get_db)) -> Company:
-    enrich_companies_from_config(db)
     company = db.get(Company, company_id)
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
@@ -71,12 +64,6 @@ def delete_company(company_id: int, db: Session = Depends(get_db)) -> Response:
         raise HTTPException(status_code=404, detail="Company not found")
 
     db.query(Job).filter(Job.company_id == company_id).update({"company_id": None})
-
-    tombstone = (
-        db.query(CompanyTombstone).filter(CompanyTombstone.name == company.name).first()
-    )
-    if tombstone is None:
-        db.add(CompanyTombstone(name=company.name))
 
     db.delete(company)
     db.commit()

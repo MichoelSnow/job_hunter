@@ -181,6 +181,20 @@ def refresh_jobs_scrapers(background_tasks: BackgroundTasks) -> dict[str, str]:
     return {"status": "Scraper job discovery started"}
 
 
+@router.get("/refresh/scrapers/targets")
+def refresh_scrapers_targets() -> dict:
+    """Preview which companies are eligible for scraper refresh and which are skipped."""
+    from app.services.api_aggregator import get_scrape_targets
+
+    enabled, skipped = get_scrape_targets()
+    return {
+        "enabled_count": len(enabled),
+        "enabled": [company.get("name") for company in enabled],
+        "skipped_count": len(skipped),
+        "skipped": skipped,
+    }
+
+
 @router.get("/refresh/status")
 def refresh_status() -> dict:
     """Return the current state of the most recent job discovery run."""

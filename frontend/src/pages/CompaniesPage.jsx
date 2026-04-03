@@ -12,6 +12,9 @@ const EMPTY_COMPANY_FORM = {
   website_url: "",
   ats_type: "",
   ats_id: "",
+  workday_board: "",
+  workday_instance: "",
+  html_selectors_text: "",
 };
 
 export default function CompaniesPage() {
@@ -65,10 +68,29 @@ export default function CompaniesPage() {
       website_url: company.website_url ?? "",
       ats_type: company.ats_type ?? "",
       ats_id: company.ats_id ?? "",
+      workday_board: company.workday_board ?? "",
+      workday_instance: company.workday_instance ?? "",
+      html_selectors_text: company.html_selectors
+        ? JSON.stringify(company.html_selectors, null, 2)
+        : "",
     });
   }
 
+  const newAtsType = (newCompany.ats_type || "").toLowerCase();
+  const showNewWorkdayFields = newAtsType === "workday";
+  const showNewHtmlSelectors = newAtsType === "custom" || newAtsType === "html";
+
   function saveEdit() {
+    let htmlSelectors = null;
+    if (editData.html_selectors_text?.trim()) {
+      try {
+        htmlSelectors = JSON.parse(editData.html_selectors_text);
+      } catch {
+        setError("html_selectors must be valid JSON.");
+        return;
+      }
+    }
+
     updateMutation.mutate({
       id: editingId,
       data: {
@@ -76,6 +98,9 @@ export default function CompaniesPage() {
         website_url: editData.website_url || null,
         ats_type: editData.ats_type || null,
         ats_id: editData.ats_id || null,
+        workday_board: editData.workday_board || null,
+        workday_instance: editData.workday_instance || null,
+        html_selectors: htmlSelectors,
       },
     });
   }
@@ -89,11 +114,23 @@ export default function CompaniesPage() {
         onSubmit={(e) => {
           e.preventDefault();
           if (!newCompany.name.trim()) return;
+          let htmlSelectors = null;
+          if (newCompany.html_selectors_text.trim()) {
+            try {
+              htmlSelectors = JSON.parse(newCompany.html_selectors_text);
+            } catch {
+              setError("html_selectors must be valid JSON.");
+              return;
+            }
+          }
           createMutation.mutate({
             name: newCompany.name.trim(),
             website_url: newCompany.website_url.trim() || null,
             ats_type: newCompany.ats_type || null,
             ats_id: newCompany.ats_id.trim() || null,
+            workday_board: newCompany.workday_board.trim() || null,
+            workday_instance: newCompany.workday_instance.trim() || null,
+            html_selectors: htmlSelectors,
           });
         }}
         className="flex flex-wrap gap-2 mb-4 items-end"
@@ -129,6 +166,31 @@ export default function CompaniesPage() {
           placeholder="ATS ID"
           className="border rounded px-3 py-1.5 text-sm min-w-40"
         />
+        {showNewWorkdayFields ? (
+          <>
+            <input
+              value={newCompany.workday_board}
+              onChange={(e) => setNewCompany((d) => ({ ...d, workday_board: e.target.value }))}
+              placeholder="Workday board (optional)"
+              className="border rounded px-3 py-1.5 text-sm min-w-48"
+            />
+            <input
+              value={newCompany.workday_instance}
+              onChange={(e) => setNewCompany((d) => ({ ...d, workday_instance: e.target.value }))}
+              placeholder="Workday instance (wd1, wd5...)"
+              className="border rounded px-3 py-1.5 text-sm min-w-48"
+            />
+          </>
+        ) : null}
+        {showNewHtmlSelectors ? (
+          <textarea
+            value={newCompany.html_selectors_text}
+            onChange={(e) => setNewCompany((d) => ({ ...d, html_selectors_text: e.target.value }))}
+            placeholder='html_selectors JSON, e.g. {"job_list":"ul.jobs li","title":"a.title","url":"a.title"}'
+            rows={2}
+            className="border rounded px-3 py-1.5 text-sm min-w-[24rem] flex-1"
+          />
+        ) : null}
         <button
           type="submit"
           disabled={createMutation.isPending || !newCompany.name.trim()}
@@ -148,7 +210,6 @@ export default function CompaniesPage() {
           <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
             <tr>
               <th className="text-left px-4 py-2">Name</th>
-              <th className="text-left px-4 py-2">Website</th>
               <th className="text-left px-4 py-2">ATS Type</th>
               <th className="text-left px-4 py-2">ATS ID</th>
               <th className="px-4 py-2"></th>
@@ -157,45 +218,41 @@ export default function CompaniesPage() {
           <tbody>
             {isLoading ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">Loading...</td>
+                <td colSpan={4} className="px-4 py-8 text-center text-gray-400">Loading...</td>
               </tr>
             ) : companies.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-8 text-center text-gray-400">No companies yet.</td>
+                <td colSpan={4} className="px-4 py-8 text-center text-gray-400">No companies yet.</td>
               </tr>
             ) : (
               companies.map((company) => (
                 <tr key={company.id} className="border-b last:border-0 hover:bg-gray-50">
                   <td className="px-4 py-2 font-medium text-gray-900">
                     {editingId === company.id ? (
-                      <input
-                        value={editData.name}
-                        onChange={(e) => setEditData((d) => ({ ...d, name: e.target.value }))}
-                        className="border rounded px-1 py-0.5 text-sm w-36"
-                      />
-                    ) : (
-                      company.name
-                    )}
-                  </td>
-                  <td className="px-4 py-2 text-gray-600">
-                    {editingId === company.id ? (
-                      <input
-                        value={editData.website_url}
-                        onChange={(e) => setEditData((d) => ({ ...d, website_url: e.target.value }))}
-                        placeholder="https://..."
-                        className="border rounded px-1 py-0.5 text-sm w-40"
-                      />
-                    ) : (company.website_url || company.careers_page_url) ? (
+                      <div className="space-y-1">
+                        <input
+                          value={editData.name}
+                          onChange={(e) => setEditData((d) => ({ ...d, name: e.target.value }))}
+                          className="border rounded px-1 py-0.5 text-sm w-56"
+                        />
+                        <input
+                          value={editData.website_url}
+                          onChange={(e) => setEditData((d) => ({ ...d, website_url: e.target.value }))}
+                          placeholder="https://..."
+                          className="border rounded px-1 py-0.5 text-sm w-72"
+                        />
+                      </div>
+                    ) : company.website_url ? (
                       <a
-                        href={company.website_url || company.careers_page_url}
+                        href={company.website_url}
                         target="_blank"
                         rel="noreferrer"
                         className="text-blue-600 hover:underline"
                       >
-                        {company.website_url || company.careers_page_url}
+                        {company.name}
                       </a>
                     ) : (
-                      "—"
+                      company.name
                     )}
                   </td>
                   <td className="px-4 py-2 text-gray-600">
@@ -219,13 +276,53 @@ export default function CompaniesPage() {
                   </td>
                   <td className="px-4 py-2 text-gray-600">
                     {editingId === company.id ? (
-                      <input
-                        value={editData.ats_id}
-                        onChange={(e) => setEditData((d) => ({ ...d, ats_id: e.target.value }))}
-                        className="border rounded px-1 py-0.5 text-sm w-28"
-                      />
+                      <div className="space-y-1">
+                        <input
+                          value={editData.ats_id}
+                          onChange={(e) => setEditData((d) => ({ ...d, ats_id: e.target.value }))}
+                          className="border rounded px-1 py-0.5 text-sm w-44"
+                          placeholder="ATS ID"
+                        />
+                        {(editData.ats_type || "").toLowerCase() === "workday" ? (
+                          <>
+                            <input
+                              value={editData.workday_board}
+                              onChange={(e) => setEditData((d) => ({ ...d, workday_board: e.target.value }))}
+                              className="border rounded px-1 py-0.5 text-sm w-44"
+                              placeholder="Workday board"
+                            />
+                            <input
+                              value={editData.workday_instance}
+                              onChange={(e) => setEditData((d) => ({ ...d, workday_instance: e.target.value }))}
+                              className="border rounded px-1 py-0.5 text-sm w-44"
+                              placeholder="Workday instance"
+                            />
+                          </>
+                        ) : null}
+                        {(editData.ats_type || "").toLowerCase() === "custom" ||
+                        (editData.ats_type || "").toLowerCase() === "html" ? (
+                          <textarea
+                            value={editData.html_selectors_text}
+                            onChange={(e) => setEditData((d) => ({ ...d, html_selectors_text: e.target.value }))}
+                            rows={2}
+                            className="border rounded px-1 py-0.5 text-sm w-64"
+                            placeholder='html_selectors JSON'
+                          />
+                        ) : null}
+                      </div>
                     ) : (
-                      company.ats_id ?? "—"
+                      <div className="space-y-0.5">
+                        <div>{company.ats_id ?? "—"}</div>
+                        {company.workday_board ? (
+                          <div className="text-xs text-gray-500">board: {company.workday_board}</div>
+                        ) : null}
+                        {company.workday_instance ? (
+                          <div className="text-xs text-gray-500">instance: {company.workday_instance}</div>
+                        ) : null}
+                        {company.html_selectors ? (
+                          <div className="text-xs text-gray-500">html selectors configured</div>
+                        ) : null}
+                      </div>
                     )}
                   </td>
                   <td className="px-4 py-2 text-right">
@@ -245,7 +342,7 @@ export default function CompaniesPage() {
                         <button
                           onClick={() => {
                             const confirmed = window.confirm(
-                              `Delete ${company.name}? This removes it from the database and future config sync.`
+                              `Delete ${company.name}? This removes it from the database.`
                             );
                             if (confirmed) {
                               deleteMutation.mutate(company.id);
