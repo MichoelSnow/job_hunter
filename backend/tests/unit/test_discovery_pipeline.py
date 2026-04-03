@@ -303,6 +303,23 @@ class TestDiscoveryPipeline:
     def test_pipeline_produces_non_uniform_scores(self, db_session):
         """Regression: scoring should vary when job requirements differ."""
         from app.models.job import JobRequirement
+        from app.models.user_settings import UserSettings
+
+        db_session.add(
+            UserSettings(
+                search_queries=["director data healthcare New York"],
+                search_locations=[],
+                filter_location_query='"new york"',
+                filter_title_query="director",
+                filter_exclude_remote=True,
+                filter_target_salary=None,
+                filter_include_missing_salary=True,
+                matching_skills=["Python", "SQL"],
+                matching_experience_years=8,
+                matching_current_title="Director of Data",
+            )
+        )
+        db_session.commit()
 
         jsearch_data = {
             "data": [

@@ -1,18 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
-import {
-  createCriterion,
-  deleteCriterion,
-  getApiUsage,
-  getCriteria,
-  getDiscoverySettings,
-  getUserProfile,
-  updateDiscoverySettings,
-  updateCriterion,
-} from "../services/api";
+import { getApiUsage, getDiscoverySettings, updateDiscoverySettings } from "../services/api";
 import axios from "axios";
-
-const CRITERION_TYPES = ["industry", "location", "min_salary", "role_level", "company_size", "other"];
 
 function DiscoverySettingsSection() {
   const queryClient = useQueryClient();
@@ -23,11 +12,16 @@ function DiscoverySettingsSection() {
     filter_exclude_remote: true,
     filter_target_salary_text: "",
     filter_include_missing_salary: true,
+    matching_skills_text: "",
+    matching_experience_years_text: "",
+    matching_current_title: "",
   });
   const [apiError, setApiError] = useState(null);
   const [filtersError, setFiltersError] = useState(null);
+  const [profileError, setProfileError] = useState(null);
   const [apiSaved, setApiSaved] = useState(false);
   const [filtersSaved, setFiltersSaved] = useState(false);
+  const [profileSaved, setProfileSaved] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ["discovery-settings"],
@@ -40,12 +34,14 @@ function DiscoverySettingsSection() {
       queryClient.setQueryData(["discovery-settings"], updated);
       setApiError(null);
       setFiltersError(null);
+      setProfileError(null);
       queryClient.invalidateQueries({ queryKey: ["jobs"] });
     },
     onError: (err) => {
       const message = err.response?.data?.detail ?? "Failed to save settings.";
       setApiError(message);
       setFiltersError(message);
+      setProfileError(message);
     },
   });
 
@@ -56,9 +52,12 @@ function DiscoverySettingsSection() {
       filter_location_query: data.filter_location_query || "",
       filter_title_query: data.filter_title_query || "",
       filter_exclude_remote: !!data.filter_exclude_remote,
-      filter_target_salary_text:
-        data.filter_target_salary == null ? "" : String(data.filter_target_salary),
+      filter_target_salary_text: data.filter_target_salary == null ? "" : String(data.filter_target_salary),
       filter_include_missing_salary: !!data.filter_include_missing_salary,
+      matching_skills_text: (data.matching_skills || []).join("\n"),
+      matching_experience_years_text:
+        data.matching_experience_years == null ? "" : String(data.matching_experience_years),
+      matching_current_title: data.matching_current_title || "",
     });
   }, [data]);
 
@@ -77,6 +76,35 @@ function DiscoverySettingsSection() {
     return Math.round(value);
   }
 
+  function parsedMatchingExperience() {
+    const raw = form.matching_experience_years_text.trim();
+    if (!raw) return null;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return null;
+    return Math.round(value);
+  }
+
+  function parsedMatchingSkills() {
+    return form.matching_skills_text
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+  }
+
+  function payload() {
+    return {
+      search_queries: parsedQueries(),
+      filter_location_query: form.filter_location_query,
+      filter_title_query: form.filter_title_query,
+      filter_exclude_remote: form.filter_exclude_remote,
+      filter_target_salary: parsedTargetSalary(),
+      filter_include_missing_salary: form.filter_include_missing_salary,
+      matching_skills: parsedMatchingSkills(),
+      matching_experience_years: parsedMatchingExperience(),
+      matching_current_title: form.matching_current_title,
+    };
+  }
+
   return (
     <div className="space-y-4">
       <div className="bg-white rounded border p-4">
@@ -90,14 +118,7 @@ function DiscoverySettingsSection() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              saveMutation.mutate({
-                search_queries: parsedQueries(),
-                filter_location_query: form.filter_location_query,
-                filter_title_query: form.filter_title_query,
-                filter_exclude_remote: form.filter_exclude_remote,
-                filter_target_salary: parsedTargetSalary(),
-                filter_include_missing_salary: form.filter_include_missing_salary,
-              });
+              saveMutation.mutate(payload());
               setApiSaved(true);
               setTimeout(() => setApiSaved(false), 1500);
             }}
@@ -142,23 +163,14 @@ function DiscoverySettingsSection() {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              saveMutation.mutate({
-                search_queries: parsedQueries(),
-                filter_location_query: form.filter_location_query,
-                filter_title_query: form.filter_title_query,
-                filter_exclude_remote: form.filter_exclude_remote,
-                filter_target_salary: parsedTargetSalary(),
-                filter_include_missing_salary: form.filter_include_missing_salary,
-              });
+              saveMutation.mutate(payload());
               setFiltersSaved(true);
               setTimeout(() => setFiltersSaved(false), 1500);
             }}
             className="space-y-3"
           >
             <div>
-              <label className="block text-xs text-gray-500 mb-1">
-                Allowed locations query (Boolean)
-              </label>
+              <label className="block text-xs text-gray-500 mb-1">Allowed locations query (Boolean)</label>
               <textarea
                 rows={3}
                 value={form.filter_location_query}
@@ -204,9 +216,7 @@ function DiscoverySettingsSection() {
               />
             </div>
             <div>
-              <label className="block text-xs text-gray-500 mb-1">
-                Job title query (Boolean)
-              </label>
+              <label className="block text-xs text-gray-500 mb-1">Job title query (Boolean)</label>
               <textarea
                 rows={4}
                 value={form.filter_title_query}
@@ -233,49 +243,80 @@ function DiscoverySettingsSection() {
           </form>
         )}
       </div>
-    </div>
-  );
-}
 
-function ProfileSection() {
-  const { data: profile, isLoading } = useQuery({
-    queryKey: ["user-profile"],
-    queryFn: getUserProfile,
-  });
-
-  const user = profile?.user ?? {};
-  const parsedResume = profile?.parsed_resume ?? {};
-
-  return (
-    <div className="bg-white rounded border p-4">
-      <h2 className="font-semibold text-gray-800 mb-3 text-sm">Profile</h2>
-      {isLoading ? (
-        <div className="text-gray-400 text-sm">Loading...</div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 text-sm text-gray-700">
-          <div>
-            <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Name</div>
-            <div>{user.name ?? "—"}</div>
-          </div>
-          <div>
-            <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Current title</div>
-            <div>{profile?.current_title ?? "—"}</div>
-          </div>
-          <div>
-            <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Resume path</div>
-            <div>{user.resume_file_path ?? "—"}</div>
-          </div>
-          <div>
-            <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Parsed skills</div>
-            <div>{(parsedResume.skills || []).length}</div>
-          </div>
+      <div className="bg-white rounded border p-4">
+        <h2 className="font-semibold text-gray-800 mb-1 text-sm">Matching Profile</h2>
+        <div className="text-xs text-gray-500 mb-3">
+          Score is based on this profile versus each job description and requirements.
         </div>
-      )}
+        {isLoading ? (
+          <div className="text-gray-400 text-sm">Loading...</div>
+        ) : (
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveMutation.mutate(payload());
+              setProfileSaved(true);
+              setTimeout(() => setProfileSaved(false), 1500);
+            }}
+            className="space-y-3"
+          >
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Skills used for matching (one per line)</label>
+              <textarea
+                rows={6}
+                value={form.matching_skills_text}
+                onChange={(e) => setForm((d) => ({ ...d, matching_skills_text: e.target.value }))}
+                className="border rounded px-2 py-1 text-sm w-full"
+                placeholder="python\nsql\nmachine learning"
+              />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Years of experience</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={form.matching_experience_years_text}
+                  onChange={(e) => setForm((d) => ({ ...d, matching_experience_years_text: e.target.value }))}
+                  className="border rounded px-2 py-1 text-sm w-full"
+                  placeholder="e.g. 10"
+                />
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">Current title</label>
+                <input
+                  value={form.matching_current_title}
+                  onChange={(e) => setForm((d) => ({ ...d, matching_current_title: e.target.value }))}
+                  className="border rounded px-2 py-1 text-sm w-full"
+                  placeholder="e.g. Director of Data"
+                />
+              </div>
+            </div>
+            {profileError ? (
+              <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+                {profileError}
+              </div>
+            ) : null}
+            <div className="flex items-center gap-3">
+              <button
+                type="submit"
+                disabled={saveMutation.isPending}
+                className="rounded bg-blue-600 text-white px-3 py-1.5 text-sm hover:bg-blue-700 disabled:opacity-50"
+              >
+                Save Matching Profile
+              </button>
+              {profileSaved ? <span className="text-xs text-green-700">Saved</span> : null}
+            </div>
+          </form>
+        )}
+      </div>
     </div>
   );
 }
 
 function ResumeUploadSection() {
+  const queryClient = useQueryClient();
   const fileRef = useRef(null);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -292,6 +333,8 @@ function ResumeUploadSection() {
     try {
       const resp = await axios.post("/api/user/resume", form);
       setResult(resp.data);
+      queryClient.invalidateQueries({ queryKey: ["discovery-settings"] });
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
     } catch (err) {
       setError(err.response?.data?.detail ?? "Upload failed.");
     } finally {
@@ -326,6 +369,10 @@ function ResumeUploadSection() {
       )}
       {result && (
         <div className="mt-3 text-sm text-gray-700 space-y-1">
+          <div>
+            <span className="font-medium">Current title: </span>
+            {result.current_title ?? "—"}
+          </div>
           <div>
             <span className="font-medium">Skills: </span>
             {result.skills?.join(", ") || "none detected"}
@@ -384,188 +431,10 @@ function ApiUsageSection() {
 }
 
 export default function SettingsPage() {
-  const queryClient = useQueryClient();
-  const [newCriterion, setNewCriterion] = useState({
-    criterion_type: "industry",
-    criterion_value: "",
-    is_hard_requirement: false,
-    weight: 1.0,
-  });
-  const [editingId, setEditingId] = useState(null);
-  const [editData, setEditData] = useState({});
-  const [addError, setAddError] = useState(null);
-
-  const { data: criteria = [], isLoading } = useQuery({
-    queryKey: ["criteria"],
-    queryFn: getCriteria,
-  });
-
-  const createMutation = useMutation({
-    mutationFn: createCriterion,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["criteria"] });
-      setNewCriterion({ criterion_type: "industry", criterion_value: "", is_hard_requirement: false, weight: 1.0 });
-      setAddError(null);
-    },
-    onError: (err) => setAddError(err.response?.data?.detail ?? "Failed to add criterion."),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }) => updateCriterion(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["criteria"] });
-      setEditingId(null);
-    },
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: deleteCriterion,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["criteria"] }),
-  });
-
-  function startEdit(c) {
-    setEditingId(c.id);
-    setEditData({ criterion_type: c.criterion_type, criterion_value: c.criterion_value, is_hard_requirement: c.is_hard_requirement, weight: c.weight });
-  }
-
   return (
     <div className="space-y-6 max-w-3xl">
       <h1 className="text-lg font-semibold text-gray-900">Filters</h1>
       <DiscoverySettingsSection />
-
-      {/* Criteria */}
-      <div className="bg-white rounded border p-4">
-        <h2 className="font-semibold text-gray-800 mb-3 text-sm">Job Filters: Match Criteria</h2>
-        <div className="mb-3 text-xs text-gray-500">
-          Criteria are applied after jobs are collected and influence match scoring.
-        </div>
-
-        {/* Add form */}
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (newCriterion.criterion_value.trim()) {
-              createMutation.mutate({ ...newCriterion, criterion_value: newCriterion.criterion_value.trim() });
-            }
-          }}
-          className="grid grid-cols-[1fr_1fr_auto_auto_auto] gap-2 items-end mb-3"
-        >
-          <div>
-            <label className="block text-xs text-gray-500 mb-0.5">Type</label>
-            <select
-              value={newCriterion.criterion_type}
-              onChange={(e) => setNewCriterion((d) => ({ ...d, criterion_type: e.target.value }))}
-              className="border rounded px-2 py-1 text-sm w-full"
-            >
-              {CRITERION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-0.5">Value</label>
-            <input
-              value={newCriterion.criterion_value}
-              onChange={(e) => setNewCriterion((d) => ({ ...d, criterion_value: e.target.value }))}
-              placeholder="e.g. healthcare"
-              className="border rounded px-2 py-1 text-sm w-full"
-            />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-0.5">Weight</label>
-            <input
-              type="number"
-              step={0.5}
-              min={0}
-              max={5}
-              value={newCriterion.weight}
-              onChange={(e) => setNewCriterion((d) => ({ ...d, weight: Number(e.target.value) }))}
-              className="border rounded px-2 py-1 text-sm w-16"
-            />
-          </div>
-          <div className="flex items-center gap-1 pb-0.5">
-            <input
-              type="checkbox"
-              id="hard-req"
-              checked={newCriterion.is_hard_requirement}
-              onChange={(e) => setNewCriterion((d) => ({ ...d, is_hard_requirement: e.target.checked }))}
-            />
-            <label htmlFor="hard-req" className="text-xs text-gray-600 whitespace-nowrap">Hard req</label>
-          </div>
-          <button
-            type="submit"
-            disabled={createMutation.isPending}
-            className="rounded bg-blue-600 text-white px-3 py-1.5 text-sm hover:bg-blue-700 disabled:opacity-50"
-          >
-            Add
-          </button>
-        </form>
-
-        {addError && (
-          <div className="mb-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
-            {addError}
-          </div>
-        )}
-
-        <table className="w-full text-sm">
-          <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
-            <tr>
-              <th className="text-left px-3 py-2">Type</th>
-              <th className="text-left px-3 py-2">Value</th>
-              <th className="text-center px-3 py-2">Weight</th>
-              <th className="text-center px-3 py-2">Hard req</th>
-              <th className="px-3 py-2"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {isLoading ? (
-              <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-400">Loading...</td></tr>
-            ) : criteria.length === 0 ? (
-              <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-400">No criteria defined.</td></tr>
-            ) : (
-              criteria.map((c) => (
-                <tr key={c.id} className="border-b last:border-0 hover:bg-gray-50">
-                  <td className="px-3 py-2 text-gray-700">
-                    {editingId === c.id ? (
-                      <select value={editData.criterion_type} onChange={(e) => setEditData((d) => ({ ...d, criterion_type: e.target.value }))} className="border rounded px-1 py-0.5 text-sm">
-                        {CRITERION_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                    ) : c.criterion_type}
-                  </td>
-                  <td className="px-3 py-2 text-gray-700">
-                    {editingId === c.id ? (
-                      <input value={editData.criterion_value} onChange={(e) => setEditData((d) => ({ ...d, criterion_value: e.target.value }))} className="border rounded px-1 py-0.5 text-sm w-32" />
-                    ) : c.criterion_value}
-                  </td>
-                  <td className="px-3 py-2 text-center text-gray-700">
-                    {editingId === c.id ? (
-                      <input type="number" step={0.5} min={0} max={5} value={editData.weight} onChange={(e) => setEditData((d) => ({ ...d, weight: Number(e.target.value) }))} className="border rounded px-1 py-0.5 text-sm w-14 text-center" />
-                    ) : c.weight}
-                  </td>
-                  <td className="px-3 py-2 text-center">
-                    {editingId === c.id ? (
-                      <input type="checkbox" checked={editData.is_hard_requirement} onChange={(e) => setEditData((d) => ({ ...d, is_hard_requirement: e.target.checked }))} />
-                    ) : c.is_hard_requirement ? "Yes" : "No"}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    {editingId === c.id ? (
-                      <div className="flex gap-2 justify-end text-xs">
-                        <button onClick={() => updateMutation.mutate({ id: c.id, data: editData })} className="text-blue-600 hover:underline">Save</button>
-                        <button onClick={() => setEditingId(null)} className="text-gray-400 hover:text-gray-600">Cancel</button>
-                      </div>
-                    ) : (
-                      <div className="flex gap-2 justify-end text-xs">
-                        <button onClick={() => startEdit(c)} className="text-gray-500 hover:text-blue-600">Edit</button>
-                        <button onClick={() => deleteMutation.mutate(c.id)} className="text-gray-400 hover:text-red-500">Delete</button>
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <ProfileSection />
       <ResumeUploadSection />
       <ApiUsageSection />
     </div>

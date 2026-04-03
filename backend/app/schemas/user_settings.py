@@ -10,6 +10,9 @@ class UserSettingsBase(BaseModel):
     filter_exclude_remote: bool = True
     filter_target_salary: int | None = None
     filter_include_missing_salary: bool = True
+    matching_skills: list[str] = Field(default_factory=list)
+    matching_experience_years: int | None = None
+    matching_current_title: str | None = None
 
 
 class UserSettingsUpdate(UserSettingsBase):

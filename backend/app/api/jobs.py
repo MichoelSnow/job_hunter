@@ -11,6 +11,8 @@ from app.models.company import Company
 from app.models.job import Job
 from app.schemas.job import JobListResponse, JobResponse
 from app.services.job_normalization import html_to_text, sanitize_description_html
+from app.services.scoring_engine import ScoringEngine
+from app.services.user_settings import get_or_create_user_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["jobs"])
@@ -22,6 +24,40 @@ def _sanitize_job_response(job: Job, *, include_rich_description: bool) -> JobRe
     if include_rich_description:
         payload["description_html"] = _extract_description_html(job)
     return JobResponse(**payload)
+
+
+def _job_scoring_input(job: Job) -> dict:
+    required_skills = [
+        r.requirement_value
+        for r in job.requirements
+        if r.requirement_type == "skill" and r.is_required and r.requirement_value
+    ]
+    experience_required = next(
+        (
+            int(r.requirement_value)
+            for r in job.requirements
+            if r.requirement_type == "experience" and r.requirement_value
+        ),
+        None,
+    )
+    return {
+        "title": job.title,
+        "required_skills": required_skills,
+        "experience_required": experience_required,
+    }
+
+
+def _score_explanation_for_job(db: Session, job: Job) -> dict[str, object]:
+    from app.config.settings import settings as app_settings
+
+    user_settings = get_or_create_user_settings(db)
+    user_profile = {
+        "skills": user_settings.matching_skills or [],
+        "experience_years": user_settings.matching_experience_years,
+        "current_title": user_settings.matching_current_title,
+    }
+    engine = ScoringEngine(app_settings, user_profile)
+    return engine.explain(_job_scoring_input(job))
 
 
 def _extract_description_html(job: Job) -> str | None:
@@ -153,7 +189,12 @@ def get_job(job_id: int, db: Session = Depends(get_db)) -> Job:
     job = db.get(Job, job_id)
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    return _sanitize_job_response(job, include_rich_description=True)
+    response = _sanitize_job_response(job, include_rich_description=True)
+    explanation = _score_explanation_for_job(db, job)
+    response.score_breakdown = explanation.get("score_breakdown")
+    response.matched_skills = explanation.get("matched_skills", [])
+    response.missing_skills = explanation.get("missing_skills", [])
+    return response
 
 
 @router.post("/refresh/apis")
@@ -240,13 +281,9 @@ def list_job_locations(
 
 
 @router.put("/{job_id}/score")
-def rescore_job(job_id: int, db: Session = Depends(get_db)) -> dict[str, str | float]:
-    """Recalculate match scores for a single job using the current user profile and criteria."""
+def rescore_job(job_id: int, db: Session = Depends(get_db)) -> dict[str, object]:
+    """Recalculate match scores for a single job using the current matching profile."""
     from datetime import datetime
-
-    from app.models.criteria import UserCriteria
-    from app.services.scoring_engine import ScoringEngine
-    from app.services.text_parser import load_user_profile
 
     job = db.get(Job, job_id)
     if not job:
@@ -254,35 +291,16 @@ def rescore_job(job_id: int, db: Session = Depends(get_db)) -> dict[str, str | f
 
     from app.config.settings import settings as app_settings
 
-    user_profile = load_user_profile()
-    engine = ScoringEngine(app_settings, user_profile)
-
-    criteria = [
-        {
-            "criterion_type": c.criterion_type,
-            "criterion_value": c.criterion_value,
-            "is_hard_requirement": c.is_hard_requirement,
-            "weight": c.weight,
-        }
-        for c in db.query(UserCriteria).all()
-    ]
-    required_skills = [
-        r.requirement_value
-        for r in job.requirements
-        if r.requirement_type == "skill" and r.is_required
-    ]
-    experience_required = next(
-        (int(r.requirement_value) for r in job.requirements if r.requirement_type == "experience"),
-        None,
-    )
-    job_dict = {
-        "title": job.title,
-        "required_skills": required_skills,
-        "experience_required": experience_required,
-        "salary_min": job.salary_min,
-        "company_industry": job.company.industry if job.company else None,
+    user_settings = get_or_create_user_settings(db)
+    user_profile = {
+        "skills": user_settings.matching_skills or [],
+        "experience_years": user_settings.matching_experience_years,
+        "current_title": user_settings.matching_current_title,
     }
-    u2j, j2u, overall = engine.score(job_dict, criteria)
+    engine = ScoringEngine(app_settings, user_profile)
+    job_dict = _job_scoring_input(job)
+    u2j, j2u, overall = engine.score(job_dict)
+    explanation = engine.explain(job_dict)
     job.match_score_user_to_job = u2j
     job.match_score_job_to_user = j2u
     job.overall_match_score = overall
@@ -294,4 +312,7 @@ def rescore_job(job_id: int, db: Session = Depends(get_db)) -> dict[str, str | f
         "match_score_user_to_job": u2j,
         "match_score_job_to_user": j2u,
         "overall_match_score": overall,
+        "score_breakdown": explanation.get("score_breakdown"),
+        "matched_skills": explanation.get("matched_skills", []),
+        "missing_skills": explanation.get("missing_skills", []),
     }

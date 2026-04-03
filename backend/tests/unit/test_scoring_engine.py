@@ -1,5 +1,3 @@
-import pytest
-
 from app.config.settings import Settings
 from app.services.scoring_engine import ScoringEngine, _title_level
 
@@ -42,10 +40,6 @@ def _job(**kwargs):
     return base
 
 
-# ---------------------------------------------------------------------------
-# _title_level helper
-# ---------------------------------------------------------------------------
-
 class TestTitleLevel:
     def test_director(self):
         assert _title_level("Director of Data") == 4
@@ -66,182 +60,34 @@ class TestTitleLevel:
         assert _title_level("Underwater Basket Weaver") is None
 
 
-# ---------------------------------------------------------------------------
-# Skill scoring
-# ---------------------------------------------------------------------------
-
-class TestSkillScoring:
-    def test_full_overlap_raises_score(self):
+class TestResumeMatchScoring:
+    def test_skill_overlap_increases_score(self):
         engine = _engine()
-        job = _job(required_skills=["Python", "SQL"])
-        u2j, _, _ = engine.score(job, [])
-        # With 2/2 skills matched, skill_score=100 * 0.5 = 50
-        # plus experience and title contributions → well above 50
-        assert u2j > 60
+        high = _job(required_skills=["Python", "SQL"], experience_required=8, title="Director")
+        low = _job(required_skills=["Java", "Kubernetes"], experience_required=8, title="Director")
+        high_score = engine.score(high)[0]
+        low_score = engine.score(low)[0]
+        assert high_score > low_score
 
-    def test_no_overlap_lowers_score(self):
-        engine = _engine()
-        job = _job(required_skills=["Java", "Kubernetes"])
-        u2j_no_match, _, _ = engine.score(job, [])
-        job_match = _job(required_skills=["Python", "SQL"])
-        u2j_match, _, _ = engine.score(job_match, [])
-        assert u2j_no_match < u2j_match
-
-    def test_empty_requirements_gives_neutral_skill_score(self):
-        engine = _engine()
-        job = _job(required_skills=[])
-        u2j, _, _ = engine.score(job, [])
-        # skill_score neutral (50 * 0.5 = 25), but experience and title add more
-        assert u2j > 0
-
-
-# ---------------------------------------------------------------------------
-# Experience scoring
-# ---------------------------------------------------------------------------
-
-class TestExperienceScoring:
-    def test_exceeds_requirement_gets_full_score(self):
-        engine_high = _engine(experience_years=12)
-        engine_low = _engine(experience_years=5)
-        job = _job(experience_required=10)
-        u2j_high, _, _ = engine_high.score(job, [])
-        u2j_low, _, _ = engine_low.score(job, [])
-        assert u2j_high > u2j_low
-
-    def test_meets_requirement_exactly(self):
-        engine = _engine(experience_years=10)
-        job = _job(experience_required=10)
-        u2j_exact, _, _ = engine.score(job, [])
-        engine_under = _engine(experience_years=8)
-        u2j_under, _, _ = engine_under.score(job, [])
-        assert u2j_exact > u2j_under
-
-    def test_no_experience_data_neutral(self):
-        engine = _engine(experience_years=None)
-        job = _job()  # no experience_required either
-        u2j, _, _ = engine.score(job, [])
-        assert u2j > 0  # should still produce a score
-
-    def test_no_job_requirement_gives_neutral_positive(self):
-        # When job doesn't specify experience, we give a neutral-positive 75
+    def test_experience_gap_lowers_score(self):
         engine = _engine(experience_years=5)
-        job_no_req = _job(experience_required=None)
-        job_high_req = _job(experience_required=20)
-        u2j_no_req, _, _ = engine.score(job_no_req, [])
-        u2j_high_req, _, _ = engine.score(job_high_req, [])
-        assert u2j_no_req > u2j_high_req
+        easy = _job(required_skills=["Python"], experience_required=3, title="Director")
+        hard = _job(required_skills=["Python"], experience_required=12, title="Director")
+        assert engine.score(easy)[0] > engine.score(hard)[0]
 
+    def test_title_alignment_affects_score(self):
+        aligned = _engine(current_title="Director of Data")
+        misaligned = _engine(current_title="Data Analyst")
+        job = _job(required_skills=["Python"], experience_required=8, title="Director of Analytics")
+        assert aligned.score(job)[0] > misaligned.score(job)[0]
 
-# ---------------------------------------------------------------------------
-# Title / level scoring
-# ---------------------------------------------------------------------------
+    def test_missing_all_match_inputs_returns_zero(self):
+        engine = _engine(experience_years=None, current_title=None, skills=[])
+        score = engine.score(_job(required_skills=[], experience_required=None, title="Unknown Role"))[0]
+        assert score == 0.0
 
-class TestTitleScoring:
-    def test_same_level_beats_different_level(self):
-        engine_dir = _engine(current_title="Director of Data")
-        engine_analyst = _engine(current_title="Data Analyst")
-        job = _job(title="Director of Analytics")
-        u2j_same, _, _ = engine_dir.score(job, [])
-        u2j_diff, _, _ = engine_analyst.score(job, [])
-        assert u2j_same > u2j_diff
-
-    def test_one_level_apart_intermediate_score(self):
-        engine = _engine(current_title="Manager")  # level 3
-        job = _job(title="Director")               # level 4, diff=1
-        u2j, _, _ = engine.score(job, [])
-        # title sub-score should be 75; combined should be positive
-        assert u2j > 0
-
-    def test_unrecognised_title_neutral(self):
-        engine = _engine(current_title="Grand Poobah")
-        job = _job(title="Supreme Overlord")
-        u2j, _, _ = engine.score(job, [])
-        assert u2j > 0  # neutral, not zero
-
-
-# ---------------------------------------------------------------------------
-# Job-to-user scoring
-# ---------------------------------------------------------------------------
-
-class TestJobToUserScoring:
-    def test_industry_match_adds_score(self):
+    def test_all_score_fields_are_equal(self):
         engine = _engine()
-        job = _job(company_industry="healthcare")
-        criteria = [
-            {
-                "criterion_type": "industry",
-                "criterion_value": "healthcare",
-                "weight": 2.0,
-                "is_hard_requirement": False,
-            }
-        ]
-        _, j2u, _ = engine.score(job, criteria)
-        assert j2u > 0
-
-    def test_salary_match_adds_score(self):
-        engine = _engine()
-        job = _job(salary_min=200_000)
-        criteria = [
-            {
-                "criterion_type": "min_salary",
-                "criterion_value": "150000",
-                "weight": 1.0,
-                "is_hard_requirement": False,
-            }
-        ]
-        _, j2u, _ = engine.score(job, criteria)
-        assert j2u > 0
-
-    def test_salary_below_minimum_no_score(self):
-        engine = _engine()
-        job = _job(salary_min=80_000)
-        criteria = [
-            {
-                "criterion_type": "min_salary",
-                "criterion_value": "150000",
-                "weight": 1.0,
-                "is_hard_requirement": False,
-            }
-        ]
-        _, j2u, _ = engine.score(job, criteria)
-        assert j2u == 0
-
-    def test_hard_requirement_ignored_in_j2u(self):
-        engine = _engine()
-        job = _job(company_industry="healthcare")
-        criteria = [
-            {
-                "criterion_type": "industry",
-                "criterion_value": "healthcare",
-                "weight": 5.0,
-                "is_hard_requirement": True,  # hard requirements excluded from j2u scoring
-            }
-        ]
-        _, j2u, _ = engine.score(job, criteria)
-        assert j2u == 0
-
-    def test_j2u_capped_at_100(self):
-        engine = _engine()
-        job = _job(company_industry="healthcare", salary_min=300_000)
-        # Many heavy criteria — should cap at 100
-        criteria = [
-            {"criterion_type": "industry", "criterion_value": "healthcare", "weight": 5.0, "is_hard_requirement": False},
-            {"criterion_type": "min_salary", "criterion_value": "100000", "weight": 5.0, "is_hard_requirement": False},
-            {"criterion_type": "industry", "criterion_value": "health", "weight": 5.0, "is_hard_requirement": False},
-        ]
-        _, j2u, _ = engine.score(job, criteria)
-        assert j2u <= 100.0
-
-
-# ---------------------------------------------------------------------------
-# Overall score
-# ---------------------------------------------------------------------------
-
-class TestOverallScore:
-    def test_overall_is_weighted_combination(self):
-        engine = _engine()
-        job = _job(required_skills=["Python", "SQL"])
-        u2j, j2u, overall = engine.score(job, [])
-        # overall is computed from unrounded intermediates before being rounded,
-        # so allow up to 0.1 difference from the rounded-value calculation
-        assert abs(overall - (u2j * 0.6 + j2u * 0.4)) <= 0.1
+        job = _job(required_skills=["Python"], experience_required=8, title="Director")
+        u2j, j2u, overall = engine.score(job)
+        assert u2j == j2u == overall

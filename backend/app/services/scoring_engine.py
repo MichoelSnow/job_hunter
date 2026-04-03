@@ -54,56 +54,87 @@ class ScoringEngine:
         self.user_profile = user_profile
         self._user_skills: list[str] = self._flatten_skills(user_profile.get("skills", {}))
 
-    def score(
-        self, job: dict[str, Any], criteria: list[dict[str, Any]]
-    ) -> tuple[float, float, float]:
+    def score(self, job: dict[str, Any]) -> tuple[float, float, float]:
         """
         Returns (user_to_job, job_to_user, overall) scores, each 0-100.
         job: normalized job dict (from aggregator or DB row as dict) — should include
              required_skills, experience_required, and title.
-        criteria: list of UserCriteria dicts (soft criteria only)
         """
-        user_to_job = self._score_user_to_job(job)
-        job_to_user = self._score_job_to_user(job, criteria)
-        overall = (
-            user_to_job * self.settings.user_to_job_weight
-            + job_to_user * self.settings.job_to_user_weight
-        )
-        return round(user_to_job, 1), round(job_to_user, 1), round(overall, 1)
+        resume_match = self._score_resume_match(job)
+        return round(resume_match, 1), round(resume_match, 1), round(resume_match, 1)
 
-    def _score_user_to_job(self, job: dict[str, Any]) -> float:
-        """Skill overlap + experience + title alignment."""
+    def explain(self, job: dict[str, Any]) -> dict[str, Any]:
+        """Return detailed score components and skills overlap for UI explanations."""
+        required = [str(s) for s in (job.get("required_skills") or []) if s]
+        user_skills = [str(s) for s in self._user_skills if s]
+        required_set = {s.lower(): s for s in required}
+        user_set = {s.lower(): s for s in user_skills}
+
+        matched_keys = sorted(set(required_set) & set(user_set))
+        missing_keys = sorted(set(required_set) - set(user_set))
+        matched_skills = [required_set[k] for k in matched_keys]
+        missing_skills = [required_set[k] for k in missing_keys]
+
+        skill_score = self._score_skills(job)
+        experience_score = self._score_experience(job)
+        title_score = self._score_title(job)
+        overall = self._score_resume_match(job)
+
+        return {
+            "score_breakdown": {
+                "skills": None if skill_score is None else round(skill_score, 1),
+                "experience": None if experience_score is None else round(experience_score, 1),
+                "title": None if title_score is None else round(title_score, 1),
+                "overall": round(overall, 1),
+            },
+            "matched_skills": matched_skills,
+            "missing_skills": missing_skills,
+        }
+
+    def _score_resume_match(self, job: dict[str, Any]) -> float:
+        """Resume/profile-to-job match using only extracted profile signals."""
+        components: list[float] = []
+
+        skill_score = self._score_skills(job)
+        if skill_score is not None:
+            components.append(skill_score)
+
+        experience_score = self._score_experience(job)
+        if experience_score is not None:
+            components.append(experience_score)
+
+        title_score = self._score_title(job)
+        if title_score is not None:
+            components.append(title_score)
+
+        if not components:
+            return 0.0
+
+        return min(sum(components) / len(components), 100.0)
+
+    def _score_skills(self, job: dict[str, Any]) -> float | None:
         required = job.get("required_skills", [])
+        if not required:
+            return None
 
-        if required:
-            overlap = len(set(self._user_skills) & set(required))
-            skill_score = min(overlap / len(required), 1.0) * 100
-        else:
-            skill_score = 50.0  # neutral when no requirements parsed
+        overlap = len(set(self._user_skills) & set(required))
+        return min(overlap / len(required), 1.0) * 100
 
-        score = skill_score * self.settings.skill_match_weight
-        score += self._score_experience(job) * self.settings.experience_match_weight
-        score += self._score_title(job) * self.settings.title_match_weight
-        # education_match_weight slot kept at neutral (50) until education parsing is added
-        score += 50.0 * self.settings.education_match_weight
-
-        return min(score, 100.0)
-
-    def _score_experience(self, job: dict[str, Any]) -> float:
+    def _score_experience(self, job: dict[str, Any]) -> float | None:
         """Full score if user meets required years; proportional otherwise."""
         user_years = self.user_profile.get("experience_years")
         if user_years is None:
-            return 50.0  # neutral — no data
+            return None
 
         job_years = job.get("experience_required")
         if job_years is None:
-            return 75.0  # neutral-positive when job doesn't specify
+            return None
 
         if user_years >= job_years:
             return 100.0
         return min(user_years / job_years * 100, 100.0)
 
-    def _score_title(self, job: dict[str, Any]) -> float:
+    def _score_title(self, job: dict[str, Any]) -> float | None:
         """Compare seniority level of user's current title vs the job title."""
         user_title = self.user_profile.get("current_title") or ""
         job_title = job.get("title") or ""
@@ -112,7 +143,7 @@ class ScoringEngine:
         job_level = _title_level(job_title)
 
         if user_level is None or job_level is None:
-            return 50.0  # neutral when level can't be determined
+            return None
 
         diff = abs(user_level - job_level)
         if diff == 0:
@@ -123,35 +154,6 @@ class ScoringEngine:
             return 50.0
         else:
             return 25.0
-
-    def _score_job_to_user(self, job: dict[str, Any], criteria: list[dict[str, Any]]) -> float:
-        """Score how well the job satisfies the user's soft criteria."""
-        score = 0.0
-        for criterion in criteria:
-            if criterion.get("is_hard_requirement"):
-                continue
-            weight = criterion.get("weight", 1.0)
-            if self._criterion_matches(job, criterion):
-                score += weight * 20  # scaled contribution
-
-        return min(score, 100.0)
-
-    def _criterion_matches(self, job: dict[str, Any], criterion: dict[str, Any]) -> bool:
-        ctype = criterion.get("criterion_type", "")
-        cvalue = (criterion.get("criterion_value") or "").lower()
-
-        if ctype == "industry":
-            company_industry = (job.get("company_industry") or "").lower()
-            return any(v.strip() in company_industry for v in cvalue.split(","))
-
-        if ctype == "min_salary":
-            try:
-                min_sal = int(cvalue)
-                return (job.get("salary_min") or 0) >= min_sal
-            except ValueError:
-                return False
-
-        return False
 
     def _flatten_skills(self, skills: dict | list) -> list[str]:
         if isinstance(skills, list):

@@ -64,13 +64,10 @@ Tracks build progress phase by phase. Items marked `[x]` are complete; `[~]` mea
   - [x] Required vs preferred skill classification (context window heuristic)
   - [x] Store parsed requirements in `job_requirements` table (`store_job_requirements`, `parse_and_store_requirements`)
 - [x] Implement scoring engine (`scoring_engine.py`)
-  - [x] Weight injection from `Settings` at construction
-  - [x] `user_to_job` skill overlap scoring (keyword)
-  - [x] Experience match dimension
-  - [x] Title/level match dimension
-  - [x] `job_to_user` soft criteria scoring (industry, salary)
-  - [x] Unit tests for scoring logic (`test_scoring_engine.py` — 17 tests)
-- [x] Load `user_profile.yaml` at startup and pass to `ScoringEngine`
+  - [x] Resume/profile-to-job scoring (skills, experience, title)
+  - [x] No criteria-based scoring path
+  - [x] Unit tests for scoring logic (`test_scoring_engine.py`)
+- [x] Load matching profile from DB (`user_settings`) and pass to `ScoringEngine`
 - [x] Batch score all jobs after discovery run
 
 ---
@@ -94,11 +91,6 @@ Tracks build progress phase by phase. Items marked `[x]` are complete; `[~]` mea
 - [x] User profile endpoint
   - [x] `GET /api/user/profile` — return parsed `user_profile.yaml`
   - [x] `POST /api/user/resume` — upload and (re)parse resume
-- [x] Criteria endpoints
-  - [x] `GET /api/criteria`
-  - [x] `POST /api/criteria`
-  - [x] `PUT /api/criteria/{id}`
-  - [x] `DELETE /api/criteria/{id}`
 - [x] Analytics endpoints
   - [x] `GET /api/analytics/dashboard`
   - [x] `GET /api/analytics/api-usage`
@@ -128,7 +120,8 @@ Tracks build progress phase by phase. Items marked `[x]` are complete; `[~]` mea
   - [x] List companies with ATS metadata
   - [x] Add / edit / delete company
 - [x] Settings page (`SettingsPage.jsx`)
-  - [x] Criteria management (add / edit / delete hard and soft criteria)
+  - [x] Matching profile editor (skills, experience years, current title)
+  - [x] Boolean query filters for title and location
   - [x] API usage stats display
   - [x] Resume upload
 

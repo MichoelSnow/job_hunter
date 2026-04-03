@@ -17,7 +17,6 @@ job_search/
 │   │   │   ├── jobs.py
 │   │   │   ├── applications.py
 │   │   │   ├── companies.py
-│   │   │   ├── criteria.py
 │   │   │   ├── user.py
 │   │   │   └── analytics.py
 │   │   ├── services/             # Business logic — no FastAPI imports
@@ -37,14 +36,14 @@ job_search/
 │   │   │   ├── job.py
 │   │   │   ├── company.py
 │   │   │   ├── application.py
-│   │   │   ├── criteria.py
+│   │   │   ├── user_settings.py
 │   │   │   └── tracking.py
 │   │   ├── schemas/              # Pydantic request/response models
 │   │   │   ├── __init__.py
 │   │   │   ├── job.py
 │   │   │   ├── application.py
 │   │   │   ├── company.py
-│   │   │   └── criteria.py
+│   │   │   └── user_settings.py
 │   │   ├── db/
 │   │   │   ├── __init__.py
 │   │   │   └── session.py        # SQLAlchemy engine + session factory
@@ -100,7 +99,7 @@ job_search/
 ## Key Design Decisions
 
 ### Single-User, No Auth
-This tool runs locally for one person. There is no `users` table and no authentication layer. User identity (name, resume path, skills) lives in `config/user_profile.yaml`, which is edited manually. All criteria and application data live in the DB and are managed through the UI.
+This tool runs locally for one person. There is no `users` table and no authentication layer. User identity and matching profile data are persisted in the DB via `user_settings` and managed through the Filters UI.
 
 ### Persistent Database Across Search Sessions
 The SQLite database accumulates data across all job search sessions — whether the user runs it weekly, returns after 3 months, or picks it up again a year later. Jobs are never purged; they remain with their `discovered_date` timestamp. The UI defaults to showing jobs from the last 60 days, with a date filter to expand the view. Applications and history are always preserved.
@@ -121,11 +120,12 @@ Schema is recreated freely during Phases 0–5. Alembic will be added in Phase 6
 `POST /api/jobs/refresh/scrapers` triggers scraper discovery (Greenhouse/Lever/Workday).
 No automated scheduler is in scope. Weekly execution cadence is a cost-estimation guideline, not an automated schedule.
 
-### User Criteria: DB Only
-Job search criteria are stored in the `user_criteria` table and managed exclusively through the Settings UI. There is no parallel YAML file for criteria — the DB is the single source of truth.
+### Matching Profile: DB Only
+Resume-derived matching inputs (`matching_skills`, `matching_experience_years`, `matching_current_title`) live in `user_settings` and are editable in the Filters UI. Uploading a resume refreshes these fields from parsed data.
+Resume parsing prioritizes work-history sections for experience/title extraction and excludes education sections from experience-year calculation.
 
-### Scoring Weights: settings.py Only
-All scoring weights are defined in `backend/app/config/settings.py` with defaults. They are injected into `ScoringEngine` at construction. They are not in `.env` and not hardcoded inside service classes.
+### Scoring: Resume/Profile-to-Job Match
+The score reflects only how well the user's matching profile aligns with each job's parsed requirements. No separate criteria scoring layer is used.
 
 ---
 

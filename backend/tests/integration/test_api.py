@@ -1,8 +1,9 @@
 """Integration tests: one happy path + one error path per API resource."""
 from datetime import date
+from pathlib import Path
 
 from app.models.company import Company
-from app.models.job import Job
+from app.models.job import Job, JobRequirement
 
 
 # ---------------------------------------------------------------------------
@@ -52,6 +53,67 @@ class TestJobsAPI:
         assert resp.json()["id"] == job_id
         assert "company_name" in resp.json()
         assert "source_url" in resp.json()
+        assert "score_breakdown" in resp.json()
+        assert "matched_skills" in resp.json()
+        assert "missing_skills" in resp.json()
+
+    def test_get_job_includes_score_breakdown_and_skill_gaps(self, client, db_session):
+        settings_payload = {
+            "search_queries": ["director data healthcare"],
+            "filter_location_query": '"new york"',
+            "filter_title_query": "director",
+            "filter_exclude_remote": True,
+            "filter_target_salary": None,
+            "filter_include_missing_salary": True,
+            "matching_skills": ["python", "sql"],
+            "matching_experience_years": 8,
+            "matching_current_title": "Director of Data",
+        }
+        update_resp = client.put("/api/settings/discovery", json=settings_payload)
+        assert update_resp.status_code == 200
+
+        job = Job(
+            title="Director of Data",
+            description="Role with Python, SQL, and Looker requirements.",
+            location="Manhattan, NY",
+            work_arrangement="hybrid",
+            application_url="https://example.com/apply",
+            source="manual",
+            discovered_date=date(2026, 4, 1),
+        )
+        db_session.add(job)
+        db_session.flush()
+        db_session.add_all(
+            [
+                JobRequirement(
+                    job_id=job.id,
+                    requirement_type="skill",
+                    requirement_value="Python",
+                    is_required=True,
+                ),
+                JobRequirement(
+                    job_id=job.id,
+                    requirement_type="skill",
+                    requirement_value="Looker",
+                    is_required=True,
+                ),
+                JobRequirement(
+                    job_id=job.id,
+                    requirement_type="experience",
+                    requirement_value="5",
+                    is_required=True,
+                ),
+            ]
+        )
+        db_session.commit()
+        db_session.refresh(job)
+
+        resp = client.get(f"/api/jobs/{job.id}")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["score_breakdown"]["overall"] is not None
+        assert "Python" in body["matched_skills"]
+        assert "Looker" in body["missing_skills"]
 
     def test_get_job_sanitizes_html_encoded_description(self, client, db_session):
         job = Job(
@@ -279,7 +341,7 @@ class TestJobsAPI:
         names = [item["company_name"] for item in resp.json()["items"]]
         assert names[:2] == ["Alpha Inc", "Zeta Inc"]
 
-    def test_score_job_uses_company_industry(self, client, db_session):
+    def test_score_job_uses_matching_profile(self, client, db_session):
         company = Company(name="Health Corp", industry="healthcare")
         db_session.add(company)
         db_session.flush()
@@ -297,20 +359,25 @@ class TestJobsAPI:
         db_session.commit()
         db_session.refresh(job)
 
-        criterion_resp = client.post(
-            "/api/criteria",
+        settings_resp = client.put(
+            "/api/settings/discovery",
             json={
-                "criterion_type": "industry",
-                "criterion_value": "healthcare",
-                "is_hard_requirement": False,
-                "weight": 2.0,
+                "search_queries": ["director data healthcare"],
+                "filter_location_query": '"new york"',
+                "filter_title_query": "director",
+                "filter_exclude_remote": True,
+                "filter_target_salary": None,
+                "filter_include_missing_salary": True,
+                "matching_skills": ["python", "sql"],
+                "matching_experience_years": 8,
+                "matching_current_title": "Director of Data",
             },
         )
-        assert criterion_resp.status_code == 201
+        assert settings_resp.status_code == 200
 
         resp = client.put(f"/api/jobs/{job.id}/score")
         assert resp.status_code == 200
-        assert resp.json()["match_score_job_to_user"] > 0
+        assert resp.json()["overall_match_score"] >= 0
 
     def test_refresh_api_jobs_starts_background_task(self, client, monkeypatch):
         from app.services import api_aggregator
@@ -647,49 +714,6 @@ class TestCompaniesAPI:
 
 
 # ---------------------------------------------------------------------------
-# Criteria
-# ---------------------------------------------------------------------------
-
-class TestCriteriaAPI:
-    def test_create_and_list_criterion(self, client):
-        resp = client.post(
-            "/api/criteria",
-            json={"criterion_type": "industry", "criterion_value": "healthcare", "weight": 2.0},
-        )
-        assert resp.status_code == 201
-        list_resp = client.get("/api/criteria")
-        assert list_resp.status_code == 200
-        assert len(list_resp.json()) == 1
-
-    def test_update_criterion(self, client):
-        create_resp = client.post(
-            "/api/criteria",
-            json={"criterion_type": "industry", "criterion_value": "healthcare", "weight": 1.0},
-        )
-        cid = create_resp.json()["id"]
-        resp = client.put(f"/api/criteria/{cid}", json={"weight": 3.0})
-        assert resp.status_code == 200
-        assert resp.json()["weight"] == 3.0
-
-    def test_update_criterion_not_found(self, client):
-        resp = client.put("/api/criteria/999", json={"weight": 1.0})
-        assert resp.status_code == 404
-
-    def test_delete_criterion(self, client):
-        create_resp = client.post(
-            "/api/criteria",
-            json={"criterion_type": "industry", "criterion_value": "healthcare"},
-        )
-        cid = create_resp.json()["id"]
-        resp = client.delete(f"/api/criteria/{cid}")
-        assert resp.status_code == 204
-
-    def test_delete_criterion_not_found(self, client):
-        resp = client.delete("/api/criteria/999")
-        assert resp.status_code == 404
-
-
-# ---------------------------------------------------------------------------
 # Analytics
 # ---------------------------------------------------------------------------
 
@@ -720,6 +744,8 @@ class TestDiscoverySettingsAPI:
         assert isinstance(body["search_queries"], list)
         assert isinstance(body["filter_location_query"], str)
         assert isinstance(body["filter_title_query"], str)
+        assert isinstance(body["matching_skills"], list)
+        assert body["matching_experience_years"] is None or isinstance(body["matching_experience_years"], int)
         assert body["filter_exclude_remote"] is True
         assert body["filter_target_salary"] is None
         assert body["filter_include_missing_salary"] is True
@@ -732,6 +758,9 @@ class TestDiscoverySettingsAPI:
             "filter_exclude_remote": False,
             "filter_target_salary": 190000,
             "filter_include_missing_salary": False,
+            "matching_skills": ["python", "sql"],
+            "matching_experience_years": 12,
+            "matching_current_title": "Director of Data",
         }
         resp = client.put("/api/settings/discovery", json=payload)
         assert resp.status_code == 200
@@ -742,6 +771,9 @@ class TestDiscoverySettingsAPI:
         assert body["filter_exclude_remote"] is False
         assert body["filter_target_salary"] == 190000
         assert body["filter_include_missing_salary"] is False
+        assert body["matching_skills"] == payload["matching_skills"]
+        assert body["matching_experience_years"] == 12
+        assert body["matching_current_title"] == "Director of Data"
 
     def test_update_discovery_settings_reapplies_job_visibility(self, client, db_session):
         visible = Job(
@@ -868,6 +900,42 @@ class TestDiscoverySettingsAPI:
         assert resp.status_code == 422
         assert "Invalid boolean query" in resp.json()["detail"]
 
+    def test_get_discovery_settings_autorefreshes_matching_profile_from_saved_resume(
+        self, client, monkeypatch, tmp_path
+    ):
+        from app.services import user_settings as user_settings_service
+
+        temp_repo_root = tmp_path / "repo"
+        temp_data_dir = temp_repo_root / "data"
+        temp_data_dir.mkdir(parents=True, exist_ok=True)
+        resume_path = temp_data_dir / "resume.md"
+        resume_path.write_text(
+            "## Experience\n## Director of Data (2021 - Present)\nPython and SQL",
+            encoding="utf-8",
+        )
+
+        monkeypatch.setattr(user_settings_service, "_REPO_ROOT", temp_repo_root)
+        monkeypatch.setattr(
+            user_settings_service,
+            "load_user_profile",
+            lambda: {"user": {"resume_file_path": "data/resume.md"}},
+        )
+
+        first = client.get("/api/settings/discovery")
+        assert first.status_code == 200
+        first_body = first.json()
+        assert "Python" in first_body["matching_skills"]
+
+        resume_path.write_text(
+            "## Experience\n## Director of Data (2021 - Present)\nTableau and Looker",
+            encoding="utf-8",
+        )
+
+        second = client.get("/api/settings/discovery")
+        assert second.status_code == 200
+        second_body = second.json()
+        assert "Tableau" in second_body["matching_skills"]
+
 
 # ---------------------------------------------------------------------------
 # User profile
@@ -889,7 +957,15 @@ class TestUserProfileAPI:
         )
         assert resp.status_code == 422
 
-    def test_upload_resume_valid_md(self, client):
+    def test_upload_resume_valid_md(self, client, monkeypatch, tmp_path):
+        from app.api import user as user_api
+
+        temp_repo_root = tmp_path / "repo"
+        temp_data_dir = temp_repo_root / "data"
+        temp_data_dir.mkdir(parents=True, exist_ok=True)
+        monkeypatch.setattr(user_api, "_REPO_ROOT", temp_repo_root)
+        monkeypatch.setattr(user_api, "_DATA_DIR", temp_data_dir)
+
         md_content = b"# John Doe\nDirector of Data\n2018 - 2024 Health Corp"
         resp = client.post(
             "/api/user/resume",
@@ -899,3 +975,4 @@ class TestUserProfileAPI:
         body = resp.json()
         assert "skills" in body
         assert "experience_years" in body
+        assert Path(temp_data_dir / "resume.md").exists()

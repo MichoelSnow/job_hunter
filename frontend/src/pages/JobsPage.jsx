@@ -134,6 +134,29 @@ function JobDetailPanel({ jobId, onClose, onHideToggle }) {
             </div>
           </div>
           <div>
+            <div className="text-xs text-gray-400 uppercase tracking-wide mb-1">Score Breakdown</div>
+            <div className="grid grid-cols-2 gap-2 text-gray-700">
+              <div>Skills: {job.score_breakdown?.skills ?? "—"}</div>
+              <div>Experience: {job.score_breakdown?.experience ?? "—"}</div>
+              <div>Title: {job.score_breakdown?.title ?? "—"}</div>
+              <div>Overall: {job.score_breakdown?.overall ?? job.overall_match_score ?? "—"}</div>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 gap-2 text-sm">
+            <div>
+              <div className="text-xs text-gray-400 uppercase tracking-wide mb-1">Matched Skills</div>
+              <div className="text-gray-700">
+                {job.matched_skills?.length ? job.matched_skills.join(", ") : "—"}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-400 uppercase tracking-wide mb-1">Missing Skills</div>
+              <div className="text-gray-700">
+                {job.missing_skills?.length ? job.missing_skills.join(", ") : "—"}
+              </div>
+            </div>
+          </div>
+          <div>
             <div className="text-xs text-gray-400 uppercase tracking-wide mb-1">Description</div>
             {job.description_html ? (
               <div

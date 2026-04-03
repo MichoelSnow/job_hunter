@@ -136,9 +136,28 @@ def _ensure_sqlite_user_settings_columns() -> None:
         if "filter_title_query" not in columns:
             logger.info("Adding missing user_settings.filter_title_query column")
             conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN filter_title_query TEXT DEFAULT ''")
+        if "matching_skills" not in columns:
+            logger.info("Adding missing user_settings.matching_skills column")
+            conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN matching_skills JSON DEFAULT '[]'")
+        if "matching_experience_years" not in columns:
+            logger.info("Adding missing user_settings.matching_experience_years column")
+            conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN matching_experience_years INTEGER")
+        if "matching_current_title" not in columns:
+            logger.info("Adding missing user_settings.matching_current_title column")
+            conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN matching_current_title VARCHAR(255)")
+        if "matching_resume_path" not in columns:
+            logger.info("Adding missing user_settings.matching_resume_path column")
+            conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN matching_resume_path VARCHAR(500)")
+        if "matching_resume_mtime" not in columns:
+            logger.info("Adding missing user_settings.matching_resume_mtime column")
+            conn.exec_driver_sql("ALTER TABLE user_settings ADD COLUMN matching_resume_mtime FLOAT")
         conn.exec_driver_sql(
             "UPDATE user_settings SET filter_include_missing_salary = 1 "
             "WHERE filter_include_missing_salary IS NULL"
+        )
+        conn.exec_driver_sql(
+            "UPDATE user_settings SET matching_skills = '[]' "
+            "WHERE matching_skills IS NULL"
         )
 
         def to_or_query(values: list[str]) -> str:

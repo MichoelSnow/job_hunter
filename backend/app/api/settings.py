@@ -33,6 +33,11 @@ def update_discovery_settings(payload: UserSettingsUpdate, db: Session = Depends
     settings.filter_exclude_remote = payload.filter_exclude_remote
     settings.filter_target_salary = payload.filter_target_salary
     settings.filter_include_missing_salary = payload.filter_include_missing_salary
+    settings.matching_skills = [skill.strip() for skill in payload.matching_skills if skill.strip()]
+    settings.matching_experience_years = payload.matching_experience_years
+    settings.matching_current_title = (
+        payload.matching_current_title.strip() if payload.matching_current_title else None
+    )
     filter_engine = JobFilter(
         allowed_location_query=settings.filter_location_query,
         exclude_remote=settings.filter_exclude_remote,

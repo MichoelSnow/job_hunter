@@ -401,6 +401,11 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
             title_query = user_settings.filter_title_query or ""
             target_salary = user_settings.filter_target_salary
             include_missing_salary = user_settings.filter_include_missing_salary
+            matching_profile = {
+                "skills": user_settings.matching_skills or [],
+                "experience_years": user_settings.matching_experience_years,
+                "current_title": user_settings.matching_current_title,
+            }
         finally:
             settings_db.close()
 
@@ -470,13 +475,11 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
             _set_status(step="Parsing job requirements...")
             from app.services.job_store import parse_and_store_requirements
             from app.services.scoring_engine import ScoringEngine
-            from app.services.text_parser import load_user_profile
 
             parse_and_store_requirements(db, all_jobs)
 
             _set_status(step="Scoring jobs...")
-            user_profile = load_user_profile()
-            engine = ScoringEngine(settings, user_profile)
+            engine = ScoringEngine(settings, matching_profile)
             _score_all_active_jobs(db, engine)
         finally:
             db.close()
@@ -534,19 +537,8 @@ def _score_all_active_jobs(db: "Session", engine: "ScoringEngine") -> None:
 
     from sqlalchemy.orm import Session  # noqa: F401 — type reference only
 
-    from app.models.criteria import UserCriteria
     from app.models.job import Job as JobModel
     from app.services.scoring_engine import ScoringEngine  # noqa: F401 — type reference only
-
-    criteria = [
-        {
-            "criterion_type": c.criterion_type,
-            "criterion_value": c.criterion_value,
-            "is_hard_requirement": c.is_hard_requirement,
-            "weight": c.weight,
-        }
-        for c in db.query(UserCriteria).all()
-    ]
 
     jobs = db.query(JobModel).filter(JobModel.is_active == True).all()  # noqa: E712
     for job in jobs:
@@ -566,7 +558,7 @@ def _score_all_active_jobs(db: "Session", engine: "ScoringEngine") -> None:
             "salary_min": job.salary_min,
             "company_industry": job.company.industry if job.company else None,
         }
-        u2j, j2u, overall = engine.score(job_dict, criteria)
+        u2j, j2u, overall = engine.score(job_dict)
         job.match_score_user_to_job = u2j
         job.match_score_job_to_user = j2u
         job.overall_match_score = overall

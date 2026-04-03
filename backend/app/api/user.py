@@ -56,9 +56,29 @@ async def upload_resume(file: UploadFile) -> dict:
     from app.services.text_parser import ResumeParser
 
     parsed = ResumeParser().parse_file(str(dest))
+    from app.db.session import SessionLocal
+    from app.services.user_settings import get_or_create_user_settings
+
+    db = SessionLocal()
+    try:
+        settings = get_or_create_user_settings(db)
+        settings.matching_skills = [str(s).strip() for s in (parsed.get("skills") or []) if str(s).strip()]
+        settings.matching_experience_years = parsed.get("experience_years")
+        settings.matching_current_title = (
+            parsed.get("current_title")
+            or ((parsed.get("titles") or [None])[0])
+            or settings.matching_current_title
+        )
+        settings.matching_resume_path = str(dest.relative_to(_REPO_ROOT))
+        settings.matching_resume_mtime = dest.stat().st_mtime
+        db.commit()
+    finally:
+        db.close()
+
     return {
         "saved_to": str(dest.relative_to(_REPO_ROOT)),
         "skills": parsed["skills"],
         "experience_years": parsed["experience_years"],
+        "current_title": parsed.get("current_title"),
         "titles": parsed["titles"],
     }
