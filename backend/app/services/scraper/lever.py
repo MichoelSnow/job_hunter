@@ -4,12 +4,16 @@ import logging
 from datetime import date
 from typing import Any
 
+import requests
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
+
 from app.services.job_normalization import extract_salary_from_text, html_to_text, infer_work_arrangement
 from app.services.scraper.base import BaseJobScraper
 
 logger = logging.getLogger(__name__)
 
 LEVER_API = "https://api.lever.co/v0/postings/{ats_id}?mode=json"
+_LEVER_TIMEOUT_SECONDS = 30
 
 
 class LeverScraper(BaseJobScraper):
@@ -18,10 +22,16 @@ class LeverScraper(BaseJobScraper):
     No auth required; returns all published postings for the given ats_id.
     """
 
+    @retry(
+        stop=stop_after_attempt(4),
+        wait=wait_exponential(multiplier=1, min=2, max=12),
+        retry=retry_if_exception(lambda exc: _is_retryable_lever_exception(exc)),
+        reraise=True,
+    )
     def _fetch_raw(self) -> list[dict[str, Any]]:
         ats_id = self.company.get("ats_id", "")
         url = LEVER_API.format(ats_id=ats_id)
-        response = self.session.get(url, timeout=15)
+        response = self.session.get(url, timeout=_LEVER_TIMEOUT_SECONDS)
         response.raise_for_status()
         return response.json()
 
@@ -141,3 +151,16 @@ def _compose_description_html(raw: dict[str, Any]) -> str:
         append_html(raw.get("additionalPlain"))
 
     return "\n".join(blocks)
+
+
+def _is_retryable_lever_exception(exc: Exception) -> bool:
+    if isinstance(exc, (requests.exceptions.ReadTimeout, requests.exceptions.ConnectTimeout)):
+        return True
+    if isinstance(exc, requests.exceptions.ConnectionError):
+        return True
+    if isinstance(exc, requests.exceptions.HTTPError):
+        response = getattr(exc, "response", None)
+        if response is None:
+            return False
+        return response.status_code in {429, 500, 502, 503, 504}
+    return False

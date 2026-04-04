@@ -13,6 +13,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -465,6 +466,32 @@ class TestCompanyScrape:
         assert all(j["raw_data"].get("normalized_description_html") for j in jobs)
         assert all(j["application_url"] == j["source_url"] for j in jobs)
         assert all("/apply" not in j["application_url"] for j in jobs)
+
+    def test_lever_scraper_retries_on_timeout(self):
+        from app.services.scraper.lever import LeverScraper
+
+        lever_data = [
+            {
+                "id": "lever-id-timeout",
+                "text": "Director of Analytics",
+                "categories": {"location": "New York, NY"},
+                "hostedUrl": "https://jobs.lever.co/testco/timeout",
+                "createdAt": 1743465600000,
+                "descriptionPlain": "Python and SQL required.",
+            }
+        ]
+        company = {"name": "Test Co", "ats_type": "lever", "ats_id": "testco"}
+        scraper = LeverScraper(company)
+
+        with patch("requests.Session.get") as mock_get:
+            mock_get.side_effect = [
+                requests.exceptions.ReadTimeout("timed out"),
+                _mock_http_response(lever_data),
+            ]
+            jobs = scraper.fetch_jobs()
+
+        assert len(jobs) == 1
+        assert mock_get.call_count == 2
 
     def test_workday_scraper_paginates(self):
         from app.services.scraper.workday import WorkdayScraper
