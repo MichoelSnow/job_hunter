@@ -24,7 +24,7 @@
 ## Project Overview
 
 ### Project Name
-**job_search**
+**job_hunter**
 
 ### Executive Summary
 A personalized job search automation tool designed to aggregate job listings from multiple sources, filter based on specific criteria (data leadership roles in healthcare/healthtech, in-office positions in Manhattan/Brooklyn), and provide intelligent matching scores between user qualifications and job requirements.

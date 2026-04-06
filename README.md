@@ -1,4 +1,4 @@
-# job_search
+# job_hunter
 
 Personal job search aggregation and tracking tool. Discovers data leadership roles in healthcare/healthtech companies in Manhattan/Brooklyn, scores them against your profile, and tracks applications.
 

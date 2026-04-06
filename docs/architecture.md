@@ -9,7 +9,7 @@ Single-user, locally-run job search aggregation tool. No authentication, no mult
 ## Directory Structure
 
 ```
-job_search/
+job_hunter/
 ├── backend/
 │   ├── app/
 │   │   ├── api/                  # FastAPI routers, one file per resource group
