@@ -24,7 +24,7 @@
 ## Project Overview
 
 ### Project Name
-**job_search**
+**job_hunter**
 
 ### Executive Summary
 A personalized job search automation tool designed to aggregate job listings from multiple sources, filter based on specific criteria (data leadership roles in healthcare/healthtech, in-office positions in Manhattan/Brooklyn), and provide intelligent matching scores between user qualifications and job requirements.
@@ -461,7 +461,7 @@ class JobAPIAggregator:
 2. **Lever postings JSON API** — `https://api.lever.co/v0/postings/{ats_id}?mode=json` — structured JSON, no scraping
 3. **HTML scraping** — `beautifulsoup4` + `lxml`, fallback only for companies with no public ATS API
 
-The `companies.json` seed file includes an `ats_type` field (`"greenhouse"`, `"lever"`, `"custom"`) so the dispatcher knows which path to take without probing.
+The `companies` table includes an `ats_type` field (`"greenhouse"`, `"lever"`, `"custom"`) so the dispatcher knows which path to take without probing.
 
 **Responsibilities**:
 - Dispatch to the correct scraper based on `ats_type`
@@ -783,7 +783,8 @@ class ScoringEngine:
 #### Jobs
 - `GET /api/jobs` - List all jobs with filters and pagination
 - `GET /api/jobs/{job_id}` - Get single job details
-- `POST /api/jobs/refresh` - Trigger job discovery process
+- `POST /api/jobs/refresh/apis` - Trigger paid API discovery (JSearch + Serply)
+- `POST /api/jobs/refresh/scrapers` - Trigger scraper discovery (Greenhouse/Lever/Workday)
 - `PUT /api/jobs/{job_id}/score` - Recalculate scores for a job
 
 #### Applications
@@ -847,11 +848,17 @@ async def get_jobs(
     
     return jobs
 
-@app.post("/api/jobs/refresh")
-async def refresh_jobs(background_tasks: BackgroundTasks):
-    """Trigger job discovery process in background."""
-    background_tasks.add_task(run_job_discovery)
-    return {"status": "Job discovery started"}
+@app.post("/api/jobs/refresh/apis")
+async def refresh_api_jobs(background_tasks: BackgroundTasks):
+    """Trigger paid API discovery in background."""
+    background_tasks.add_task(run_job_discovery_api_only)
+    return {"status": "API job discovery started"}
+
+@app.post("/api/jobs/refresh/scrapers")
+async def refresh_scraper_jobs(background_tasks: BackgroundTasks):
+    """Trigger scraper discovery in background."""
+    background_tasks.add_task(run_job_discovery_scrapers_only)
+    return {"status": "Scraper job discovery started"}
 ```
 
 ### Component 6: Frontend Dashboard
@@ -958,173 +965,7 @@ frontend/
 
 ## Implementation Phases
 
-### Phase 0: Project Setup (Week 1)
-**Goal**: Set up development environment and project structure.
-
-**Tasks**:
-1. Initialize Git repository
-2. Set up Poetry environment (`pyproject.toml`) with Python 3.13
-3. Create project structure per [architecture.md](architecture.md)
-4. Initialize FastAPI app (`backend/main.py`)
-5. Initialize React app with Vite + pnpm
-6. Set up SQLite database with initial schema (no Alembic until Phase 6)
-7. Create `config/user_profile.yaml` with user identity and skills
-8. Create `config/companies.json` seed list with ATS metadata
-9. Create `.env.example` with required environment variables
-10. Set up basic README with setup and run instructions
-
-**Deliverables**:
-- Working dev environment
-- Basic "Hello World" endpoints in backend
-- Basic "Hello World" page in frontend
-- Database schema created
-
-### Phase 1: Core Backend - Job Discovery (Week 2-3)
-**Goal**: Get job data flowing into the system.
-
-**Tasks**:
-1. Implement API aggregator for JSearch API
-   - Sign up for RapidAPI and get API key
-   - Test API endpoints
-   - Implement `search_jobs()` function
-   - Implement response parsing and normalization
-   
-2. Create database models using SQLAlchemy
-   - Implement all core tables (schema recreated freely during development)
-   
-3. Implement job storage logic
-   - Save jobs to database
-   - Handle duplicates (upsert logic)
-   - Track job discovery metadata
-   
-4. Create job filter module
-   - Implement location filter
-   - Implement work arrangement filter
-   - Implement role level filter
-   
-5. Build CLI script for manual testing
-   - `python -m backend.scripts.fetch_jobs --query "data director healthcare" --location "New York"`
-
-**Deliverables**:
-- Working API integration
-- Jobs stored in database
-- Basic filtering working
-
-### Phase 2: Resume Parsing & Scoring (Week 4)
-**Goal**: Parse resume and implement scoring engine.
-
-**Tasks**:
-1. Implement resume parser
-   - Text extraction from .docx
-   - Skill extraction
-   - Experience calculation
-   - Store in database
-   
-2. Implement job description parser
-   - Extract requirements from job descriptions
-   - Store in `job_requirements` table
-   
-3. Implement scoring engine
-   - User-to-job scoring
-   - Job-to-user scoring
-   - Combined score calculation
-   
-4. Batch process existing jobs
-   - Calculate scores for all jobs in database
-   - Store scores
-
-**Deliverables**:
-- Parsed resume in database
-- Scores calculated for all jobs
-- Scoring logic tested and validated
-
-### Phase 3: Backend API Endpoints (Week 5)
-**Goal**: Create REST API for frontend consumption.
-
-**Tasks**:
-1. Implement job endpoints
-   - List jobs with pagination
-   - Get job details
-   - Trigger job refresh
-   
-2. Implement application endpoints
-   - CRUD operations for applications
-   
-3. Implement user/profile endpoints
-   - Get/update profile
-   - Resume upload and parsing
-   - Skills management
-   
-4. Implement criteria endpoints
-   - Manage search criteria
-   
-5. Add API documentation (Swagger for FastAPI)
-
-**Deliverables**:
-- Complete REST API
-- API documentation
-- Postman collection for testing
-
-### Phase 4: Frontend - Core UI (Week 6-7)
-**Goal**: Build primary user interface.
-
-**Tasks**:
-1. Set up React app structure
-   - Routing
-   - API client (axios)
-   - State management
-   
-2. Build Jobs Dashboard
-   - Job list/card view
-   - Filters and search
-   - Job details modal
-   
-3. Build Application Tracker
-   - Application list
-   - Status management
-   - Notes and metadata
-   
-4. Connect to backend API
-   - API service layer
-   - Error handling
-   - Loading states
-
-**Deliverables**:
-- Working frontend application
-- Jobs visible in UI
-- Application tracking functional
-
-### Phase 5: ATS Scrapers (Week 8)
-**Goal**: Add company-specific job scrapers targeting public ATS JSON APIs.
-
-**Tasks**:
-1. Build Greenhouse boards API scraper (`greenhouse.py`)
-2. Build Lever postings API scraper (`lever.py`)
-3. Build HTML fallback scraper for companies with no public ATS API (`html_scraper.py`)
-4. Expand `companies.json` with `ats_type` and `ats_id` fields for all target companies
-5. Add company management to Settings UI
-
-**Deliverables**:
-- Greenhouse and Lever scrapers working
-- HTML fallback for custom career pages
-- Jobs from priority company sites appearing in database
-
-### Phase 6: Polish & Stabilization (Week 9-10)
-**Goal**: Improve UX, stabilize schema, and add Alembic.
-
-**Tasks**:
-1. Add Alembic once schema is finalized — generate initial migration from current state
-2. Improve scoring algorithm based on testing; evaluate sentence-transformers embeddings
-3. Add data visualizations (charts for score distribution, application funnel)
-4. Add export functionality (export jobs to CSV)
-5. Improve error handling and user feedback
-6. Write user documentation
-
-**Deliverables**:
-- Alembic migrations in place
-- Polished, production-ready application
-- User guide
-- Known issues documented
+See [implementation_checklist.md](implementation_checklist.md) for the full phase-by-phase task breakdown with completion status.
 
 ---
 
@@ -1132,92 +973,24 @@ frontend/
 
 ### JSearch API (Primary)
 
-**Endpoint**: `https://jsearch.p.rapidapi.com/search`
+JSearch is provided by OpenWebNinja — a direct API, not via RapidAPI.
 
-**Authentication**:
-```python
-headers = {
-    'X-RapidAPI-Key': 'YOUR_API_KEY',
-    'X-RapidAPI-Host': 'jsearch.p.rapidapi.com'
-}
-```
+- **Docs**: https://www.openwebninja.com/api/jsearch/docs
+- **Endpoint**: `https://api.openwebninja.com/jsearch/search`
+- **Auth**: `x-api-key: JSEARCHAPI_KEY` header
+- **Key parameter**: `query` (free-text, e.g. `"data director healthcare New York, NY"`)
+- **Rate limits**: Check your OpenWebNinja dashboard; usage tracked in `api_usage_tracking` table
+- **Implementation**: `backend/app/services/api_aggregator.py` — `JSearchClient`
 
-**Search Parameters**:
-```python
-params = {
-    'query': 'data director healthcare',
-    'page': '1',
-    'num_pages': '1',
-    'date_posted': 'week',  # 'all', 'today', '3days', 'week', 'month'
-    'remote_jobs_only': 'false',
-    'employment_types': 'FULLTIME',
-    'job_requirements': 'no_degree',  # or specific degree
-    'radius': '50',  # miles from location
-}
-```
+### Serply (Secondary)
 
-**Response Structure**:
-```json
-{
-  "status": "OK",
-  "request_id": "...",
-  "parameters": {...},
-  "data": [
-    {
-      "job_id": "...",
-      "employer_name": "Company Name",
-      "employer_logo": "...",
-      "job_title": "Director of Data",
-      "job_description": "...",
-      "job_city": "New York",
-      "job_state": "NY",
-      "job_country": "US",
-      "job_is_remote": false,
-      "job_posted_at_timestamp": 1234567890,
-      "job_posted_at_datetime_utc": "2024-01-15T10:00:00Z",
-      "job_offer_expiration_datetime_utc": "...",
-      "job_apply_link": "...",
-      "job_employment_type": "FULLTIME",
-      "job_min_salary": 150000,
-      "job_max_salary": 200000,
-      "job_salary_currency": "USD",
-      "job_salary_period": "YEAR",
-      "job_highlights": {...},
-      "job_required_experience": {...},
-      "job_required_skills": [...],
-      "job_required_education": {...}
-    }
-  ]
-}
-```
+- **Docs**: https://serply.io/docs
+- **Endpoint**: `https://api.serply.io/v1/job/search/`
+- **Auth**: `X-Api-Key: SERPLYAPI_KEY` header
+- **Key parameters**: `q` (query string), `num` (result count)
+- **Implementation**: `backend/app/services/api_aggregator.py` — `SerplyClient`
 
-**Rate Limits**:
-- Free tier: Check RapidAPI dashboard (typically 100-500 requests/month)
-- Monitor usage via `api_usage_tracking` table
-
-**Error Handling**:
-```python
-try:
-    response = requests.get(url, headers=headers, params=params)
-    response.raise_for_status()
-    data = response.json()
-    
-    if data.get('status') != 'OK':
-        raise APIError(f"API returned status: {data.get('status')}")
-    
-    return data.get('data', [])
-    
-except requests.exceptions.HTTPError as e:
-    if e.response.status_code == 429:
-        # Rate limit exceeded
-        log_error("Rate limit exceeded, waiting...")
-        time.sleep(60)
-    raise
-```
-
-### FlyByAPIs (Secondary/Backup)
-
-Similar integration pattern, different endpoint and response format.
+Both clients use tenacity retry (3 attempts, exponential backoff) and gracefully skip if their API key is not configured.
 
 ---
 
@@ -1353,7 +1126,7 @@ def train_preference_model(applications: List[Application], jobs: List[Job]):
 
 ### Environment Variables
 
-Only secrets and environment-specific values go in `.env`. Scoring weights, search queries, and other application logic stay in `settings.py`.
+Only secrets and environment-specific values go in `.env`. Scoring weights stay in `settings.py`; API search inputs and post-collection filters are user-managed in the Settings UI and stored in the database.
 
 Create `.env` (copy from `.env.example`):
 ```bash
@@ -1580,158 +1353,35 @@ test('renders job card with correct data', () => {
 - **PRs**: Self-review before merging
 
 ### Project Structure
-```
-job-search-app/
-├── backend/
-│   ├── app/
-│   │   ├── __init__.py
-│   │   ├── main.py              # FastAPI app
-│   │   ├── database.py          # Database connection
-│   │   ├── models/              # SQLAlchemy models
-│   │   ├── schemas/             # Pydantic schemas
-│   │   ├── api/                 # API routes
-│   │   │   ├── jobs.py
-│   │   │   ├── applications.py
-│   │   │   └── user.py
-│   │   └── services/            # Business logic
-│   │       ├── api_aggregator.py
-│   │       ├── scraper.py
-│   │       ├── text_parser.py
-│   │       ├── scoring_engine.py
-│   │       └── job_filter.py
-│   ├── config/
-│   │   └── settings.py
-│   ├── tests/
-│   ├── requirements.txt
-│   └── README.md
-│
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── pages/
-│   │   ├── services/
-│   │   ├── hooks/
-│   │   ├── App.jsx
-│   │   └── main.jsx
-│   ├── public/
-│   ├── package.json
-│   └── README.md
-│
-├── data/
-│   ├── skills_taxonomy.json
-│   ├── healthtech_companies.json
-│   └── job_search_queries.yaml
-│
-├── docs/
-│   ├── API.md
-│   ├── USER_GUIDE.md
-│   └── DEPLOYMENT.md
-│
-├── .env.example
-├── .gitignore
-├── README.md
-└── docker-compose.yml (optional)
-```
+
+See [architecture.md](architecture.md) for the full directory layout.
 
 ### Dependencies
 
-All dependencies are managed at their latest stable versions. Do not pin to specific versions listed anywhere in this document — let Poetry (backend) and pnpm (frontend) resolve current versions.
+All dependencies are managed at their latest stable versions. See `pyproject.toml` (backend, Poetry) and `frontend/package.json` (pnpm) for the authoritative list.
 
 **Backend (`pyproject.toml` — managed by Poetry)**:
-- `fastapi`
-- `uvicorn`
-- `sqlalchemy`
-- `pydantic`
-- `pydantic-settings`
-- `requests`
-- `tenacity`
-- `beautifulsoup4`
-- `lxml`
-- `scikit-learn`
-- `numpy`
-- `pandas`
-- `spacy`
-- `sentence-transformers`
-- `python-multipart`
-- `python-docx`
-- `pypdf`
+- `fastapi`, `uvicorn`, `sqlalchemy`, `pydantic`, `pydantic-settings`
+- `requests`, `tenacity`
+- `beautifulsoup4`, `lxml`
+- `scikit-learn`, `numpy`, `pandas`
+- `spacy`, `sentence-transformers`
+- `python-multipart`, `python-docx`, `pypdf`, `pyyaml`
 
-Dev dependencies:
-- `pytest`
-- `httpx`
-- `ruff`
+Dev: `pytest`, `pytest-asyncio`, `httpx`, `ruff`
 
 **Frontend (`package.json` — managed by pnpm)**:
+- `react`, `react-dom`, `react-router-dom`, `axios`
+- `@tanstack/react-query`, `@tanstack/react-table`, `zustand`
+- `date-fns`, `recharts`
 
-Dependencies:
-- `react`
-- `react-dom`
-- `react-router-dom`
-- `axios`
-- `@tanstack/react-query`
-- `@tanstack/react-table`
-- `zustand`
-- `date-fns`
-- `recharts`
-
-Dev dependencies:
-- `vite`
-- `@vitejs/plugin-react`
-- `tailwindcss`
-- `autoprefixer`
-- `postcss`
-- `eslint`
-- `prettier`
+Dev: `vite`, `@vitejs/plugin-react`, `tailwindcss`, `@tailwindcss/postcss`, `postcss`, `eslint`, `prettier`
 
 ---
 
-## Quick Start Instructions
+## Quick Start
 
-### For the Coding Agent
-
-1. **Initialize Repository**
-   ```bash
-   mkdir job-search-app && cd job-search-app
-   git init
-   ```
-
-2. **Set Up Backend**
-   ```bash
-   mkdir backend && cd backend
-   python -m venv venv
-   source venv/bin/activate  # or `venv\Scripts\activate` on Windows
-   pip install fastapi uvicorn sqlalchemy pydantic python-dotenv requests
-   # Create app structure
-   mkdir -p app/{models,schemas,api,services}
-   touch app/__init__.py app/main.py app/database.py
-   ```
-
-3. **Set Up Frontend**
-   ```bash
-   cd ..
-   npm create vite@latest frontend -- --template react
-   cd frontend
-   npm install axios react-router-dom @tanstack/react-query
-   npm install -D tailwindcss postcss autoprefixer
-   npx tailwindcss init -p
-   ```
-
-4. **Create Database**
-   ```python
-   # In app/database.py
-   from sqlalchemy import create_engine
-   from sqlalchemy.ext.declarative import declarative_base
-   from sqlalchemy.orm import sessionmaker
-   
-   SQLALCHEMY_DATABASE_URL = "sqlite:///./jobs.db"
-   engine = create_engine(SQLALCHEMY_DATABASE_URL)
-   SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-   Base = declarative_base()
-   ```
-
-5. **Start Development**
-   - Backend: `uvicorn app.main:app --reload`
-   - Frontend: `npm run dev`
+See [README.md](../README.md) for full setup and run instructions.
 
 ---
 
@@ -1785,7 +1435,8 @@ Dev dependencies:
 ### Useful Resources
 
 **APIs & Tools**:
-- JSearch API: https://rapidapi.com/letscrape-6bRBa3QguO5/api/jsearch
+- JSearch API (OpenWebNinja): https://www.openwebninja.com/api/jsearch/docs
+- Serply job search: https://serply.io/docs
 - spaCy: https://spacy.io/
 - FastAPI: https://fastapi.tiangolo.com/
 - React Query: https://tanstack.com/query/

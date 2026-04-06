@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:rapidapi.com)",
+      "WebSearch",
+      "WebFetch(domain:serply.io)",
+      "Bash(curl -s -L --max-time 10 -A Mozilla/5.0 https://www.cityblock.com/careers)",
+      "Bash(grep -oiE '\\(greenhouse|lever|workday|ashby|icims|smartrecruiters|breezy|jobvite\\)[^\"\"\"\"''''<> ]{0,60}')",
+      "Bash(curl -s -L --max-time 10 -A Mozilla/5.0 https://www.springhealth.com/careers)",
+      "Bash(curl -s -L --max-time 10 -A Mozilla/5.0 https://www.datavant.com/careers)",
+      "Bash(curl -s -L --max-time 10 -A Mozilla/5.0 https://www.quartethealth.com/careers)",
+      "Bash(curl -s -L --max-time 10 -A Mozilla/5.0 https://www.nuvationbio.com/careers)"
+    ]
+  }
+}

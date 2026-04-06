@@ -9,7 +9,7 @@ Single-user, locally-run job search aggregation tool. No authentication, no mult
 ## Directory Structure
 
 ```
-job_search/
+job_hunter/
 ├── backend/
 │   ├── app/
 │   │   ├── api/                  # FastAPI routers, one file per resource group
@@ -17,7 +17,6 @@ job_search/
 │   │   │   ├── jobs.py
 │   │   │   ├── applications.py
 │   │   │   ├── companies.py
-│   │   │   ├── criteria.py
 │   │   │   ├── user.py
 │   │   │   └── analytics.py
 │   │   ├── services/             # Business logic — no FastAPI imports
@@ -37,14 +36,14 @@ job_search/
 │   │   │   ├── job.py
 │   │   │   ├── company.py
 │   │   │   ├── application.py
-│   │   │   ├── criteria.py
+│   │   │   ├── user_settings.py
 │   │   │   └── tracking.py
 │   │   ├── schemas/              # Pydantic request/response models
 │   │   │   ├── __init__.py
 │   │   │   ├── job.py
 │   │   │   ├── application.py
 │   │   │   ├── company.py
-│   │   │   └── criteria.py
+│   │   │   └── user_settings.py
 │   │   ├── db/
 │   │   │   ├── __init__.py
 │   │   │   └── session.py        # SQLAlchemy engine + session factory
@@ -83,7 +82,7 @@ job_search/
 │   └── vite.config.js
 ├── config/
 │   ├── user_profile.yaml         # Name, resume path, skills (edited manually)
-│   └── companies.json            # Curated company seed list with ATS metadata
+│   └── skill_taxonomy.json       # Skill normalization taxonomy
 ├── data/                         # SQLite DB lives here (gitignored)
 ├── docs/
 │   ├── architecture.md           # This file
@@ -100,24 +99,33 @@ job_search/
 ## Key Design Decisions
 
 ### Single-User, No Auth
-This tool runs locally for one person. There is no `users` table and no authentication layer. User identity (name, resume path, skills) lives in `config/user_profile.yaml`, which is edited manually. All criteria and application data live in the DB and are managed through the UI.
+This tool runs locally for one person. There is no `users` table and no authentication layer. User identity and matching profile data are persisted in the DB via `user_settings` and managed through the Filters UI.
 
 ### Persistent Database Across Search Sessions
 The SQLite database accumulates data across all job search sessions — whether the user runs it weekly, returns after 3 months, or picks it up again a year later. Jobs are never purged; they remain with their `discovered_date` timestamp. The UI defaults to showing jobs from the last 60 days, with a date filter to expand the view. Applications and history are always preserved.
 
 This means no concept of "search sessions" at the schema level — `discovered_date` on each job row is sufficient to scope any time window.
 
+For scraper-sourced jobs, if a role disappears from a successful scrape for that company/source, the job is marked closed by setting `closed_date` to that scrape date. If the role reappears in a later scrape, `closed_date` is cleared.
+
+Scraper target settings are sourced from the `companies` DB table (edited via the Companies page), including Workday board/instance and HTML selectors.
+
+Each company row also stores scraper run health (`scrape_last_status`, `scrape_last_error`) so the Companies page can distinguish "0 jobs found" from "scrape failed". The Companies API returns `scraped_job_count` computed from persisted scraper-source jobs, independent of UI post-collection filters.
+
 ### DB Migrations
 Schema is recreated freely during Phases 0–5. Alembic will be added in Phase 6 once the schema stabilizes.
 
 ### Job Refresh: Manual Trigger Only
-`POST /api/jobs/refresh` triggers discovery as a FastAPI `BackgroundTask`. No automated scheduler is in scope. Weekly execution cadence is a cost-estimation guideline, not an automated schedule.
+`POST /api/jobs/refresh/apis` triggers paid API discovery (JSearch + Serply) as a FastAPI `BackgroundTask`.
+`POST /api/jobs/refresh/scrapers` triggers scraper discovery (Greenhouse/Lever/Workday).
+No automated scheduler is in scope. Weekly execution cadence is a cost-estimation guideline, not an automated schedule.
 
-### User Criteria: DB Only
-Job search criteria are stored in the `user_criteria` table and managed exclusively through the Settings UI. There is no parallel YAML file for criteria — the DB is the single source of truth.
+### Matching Profile: DB Only
+Resume-derived matching inputs (`matching_skills`, `matching_experience_years`, `matching_current_title`) live in `user_settings` and are editable in the Filters UI. Uploading a resume refreshes these fields from parsed data.
+Resume parsing prioritizes work-history sections for experience/title extraction and excludes education sections from experience-year calculation.
 
-### Scoring Weights: settings.py Only
-All scoring weights are defined in `backend/app/config/settings.py` with defaults. They are injected into `ScoringEngine` at construction. They are not in `.env` and not hardcoded inside service classes.
+### Scoring: Resume/Profile-to-Job Match
+The score reflects only how well the user's matching profile aligns with each job's parsed requirements. No separate criteria scoring layer is used.
 
 ---
 
@@ -168,30 +176,13 @@ For company-specific scrapers, use public ATS JSON APIs before falling back to H
    - Returns structured JSON
    - Also widely used in healthtech
 
-3. **HTML scraping** — `beautifulsoup4` + `lxml`, fallback only for companies with no public ATS API
+3. **Ashby posting API** — `https://api.ashbyhq.com/posting-api/job-board/{job_board_name}?includeCompensation=true`
+   - Returns full job posting fields (description HTML/plain, published date, job/apply URLs, compensation)
+   - Preferred over Ashby non-user GraphQL brief listings
 
-The `companies.json` seed file includes an `ats_type` field (`"greenhouse"`, `"lever"`, `"custom"`) and an `ats_id` field so the scraper layer knows which path to take:
+4. **HTML scraping** — `beautifulsoup4` + `lxml`, fallback only for companies with no public ATS API
 
-```json
-{
-  "healthtech_companies": [
-    {
-      "name": "Oscar Health",
-      "industry": "healthtech",
-      "ats_type": "greenhouse",
-      "ats_id": "oscar",
-      "careers_url": "https://www.hioscar.com/careers"
-    },
-    {
-      "name": "Flatiron Health",
-      "industry": "healthtech",
-      "ats_type": "greenhouse",
-      "ats_id": "flatiron",
-      "careers_url": "https://flatiron.com/careers"
-    }
-  ]
-}
-```
+Each company row stores `ats_type` and `ats_id` so the scraper layer can dispatch without endpoint probing.
 
 ---
 
@@ -220,7 +211,9 @@ overall_score = (user_to_job_score × user_to_job_weight) + (job_to_user_score �
 
 ## Environment Variables (`.env`)
 
-Only secrets and environment-specific values belong in `.env`. Scoring weights, search queries, and other application logic stay in `settings.py`.
+Only secrets and environment-specific values belong in `.env`. Scoring weights stay in `settings.py`. Discovery queries and post-collection filters are user-managed via `/api/settings/discovery` and stored in the database.
+
+For post-collection filtering, both title and location use boolean query strings (`filter_title_query`, `filter_location_query`) with `AND`/`OR`/`NOT`, parentheses, and quoted phrases.
 
 ```bash
 # Database

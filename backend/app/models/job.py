@@ -47,12 +47,14 @@ class Job(Base):
     experience_level: Mapped[str | None] = mapped_column(String(100))
     posted_date: Mapped[date | None] = mapped_column(Date)
     discovered_date: Mapped[date] = mapped_column(Date, nullable=False)
+    closed_date: Mapped[date | None] = mapped_column(Date)
     expiration_date: Mapped[date | None] = mapped_column(Date)
     application_url: Mapped[str] = mapped_column(String(1000), nullable=False)
     # 'jsearch_api', 'greenhouse', 'lever', 'html_scraper', 'manual'
     source: Mapped[str] = mapped_column(String(100), nullable=False)
     source_url: Mapped[str | None] = mapped_column(String(1000))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    passes_user_filters: Mapped[bool] = mapped_column(Boolean, default=True)
     match_score_user_to_job: Mapped[float | None] = mapped_column(Float)
     match_score_job_to_user: Mapped[float | None] = mapped_column(Float)
     overall_match_score: Mapped[float | None] = mapped_column(Float)
@@ -75,10 +77,20 @@ class Job(Base):
         Index("idx_jobs_company", "company_id"),
         Index("idx_jobs_posted_date", "posted_date"),
         Index("idx_jobs_discovered_date", "discovered_date"),
+        Index("idx_jobs_closed_date", "closed_date"),
         Index("idx_jobs_match_score", "overall_match_score"),
         Index("idx_jobs_is_active", "is_active"),
+        Index("idx_jobs_user_filters", "passes_user_filters"),
         Index("idx_jobs_location", "location"),
     )
+
+    @property
+    def company_name(self) -> str | None:
+        return self.company.name if self.company else None
+
+    @property
+    def company_industry(self) -> str | None:
+        return self.company.industry if self.company else None
 
 
 class JobRequirement(Base):

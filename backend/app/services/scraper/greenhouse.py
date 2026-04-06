@@ -3,6 +3,7 @@ import logging
 from datetime import date
 from typing import Any
 
+from app.services.job_normalization import extract_salary_from_text, html_to_text, infer_work_arrangement
 from app.services.scraper.base import BaseJobScraper
 
 logger = logging.getLogger(__name__)
@@ -19,24 +20,37 @@ class GreenhouseScraper(BaseJobScraper):
     def _fetch_raw(self) -> list[dict[str, Any]]:
         ats_id = self.company.get("ats_id", "")
         url = GREENHOUSE_API.format(ats_id=ats_id)
-        response = self.session.get(url, timeout=15)
+        response = self.session.get(url, params={"content": "true"}, timeout=15)
         response.raise_for_status()
         return response.json().get("jobs", [])
 
     def normalize(self, raw: dict[str, Any]) -> dict[str, Any]:
         location = raw.get("location", {})
+        location_name = location.get("name") if isinstance(location, dict) else str(location)
+        description = html_to_text(raw.get("content"))
+        title = raw.get("title") or ""
+        salary_min, salary_max, salary_period, salary_currency = extract_salary_from_text(description)
         return {
             "external_id": f"gh_{raw.get('id')}",
-            "title": raw.get("title", ""),
-            "description": "",  # full description requires a separate API call per job
-            "location": location.get("name") if isinstance(location, dict) else str(location),
-            "work_arrangement": "unknown",
-            "application_url": raw.get("absolute_url", ""),
+            "title": title,
+            "description": description,
+            "location": location_name,
+            "work_arrangement": infer_work_arrangement(
+                title=title,
+                location=location_name,
+                description=description,
+            ),
+            "salary_min": salary_min,
+            "salary_max": salary_max,
+            "salary_currency": salary_currency or "USD",
+            "salary_period": salary_period,
+            "application_url": raw.get("absolute_url") or "",
             "source": "greenhouse",
             "source_url": raw.get("absolute_url"),
-            "posted_date": _parse_date(raw.get("updated_at")),
+            "posted_date": _parse_date(raw.get("first_published") or raw.get("updated_at")),
             "discovered_date": date.today().isoformat(),
             "company_name": self.company.get("name"),
+            "company_industry": self.company.get("industry"),
             "raw_data": raw,
         }
 

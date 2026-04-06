@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class JobBase(BaseModel):
@@ -17,7 +17,9 @@ class JobBase(BaseModel):
     employment_type: str | None = None
     experience_level: str | None = None
     posted_date: date | None = None
+    closed_date: date | None = None
     application_url: str
+    source_url: str | None = None
     source: str
 
 
@@ -25,7 +27,6 @@ class JobCreate(JobBase):
     external_id: str | None = None
     company_id: int | None = None
     discovered_date: date
-    source_url: str | None = None
     raw_data: dict[str, Any] | None = None
 
 
@@ -35,11 +36,18 @@ class JobResponse(JobBase):
     id: int
     external_id: str | None = None
     company_id: int | None = None
+    company_name: str | None = None
+    company_industry: str | None = None
     discovered_date: date
     is_active: bool
+    passes_user_filters: bool
     match_score_user_to_job: float | None = None
     match_score_job_to_user: float | None = None
     overall_match_score: float | None = None
+    score_breakdown: dict[str, float | None] | None = None
+    matched_skills: list[str] = Field(default_factory=list)
+    missing_skills: list[str] = Field(default_factory=list)
+    description_html: str | None = None
     score_calculated_at: datetime | None = None
     created_at: datetime
     updated_at: datetime

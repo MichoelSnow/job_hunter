@@ -1,3 +1,6 @@
+from typing import Any
+
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,25 +17,14 @@ class Settings(BaseSettings):
     cors_origins: list[str] = ["http://localhost:5173"]
 
     # Job Discovery
-    max_jobs_per_query: int = 500
     api_request_delay_seconds: int = 1
 
-    # Default search queries (can be extended via UI/criteria table)
-    search_queries: list[str] = [
-        "data director healthcare",
-        "data leader healthcare",
-        "head of data healthcare",
-        "VP data healthcare",
-        "chief data officer healthcare",
-        "data director healthtech",
-        "head of data healthtech",
-    ]
+    # JSearch: num_pages per request (1–10 costs 2x quota; 11–20 costs 3x quota).
+    # 10 = 100 results per HTTP call at 2x quota cost — best efficiency on free plan.
+    jsearch_num_pages: int = 10
 
-    search_locations: list[str] = [
-        "New York, NY",
-        "Manhattan, NY",
-        "Brooklyn, NY",
-    ]
+    # Serply: results per request (max 100).
+    serply_num_results: int = 100
 
     # Scoring weights — only defined here, injected into ScoringEngine at construction
     user_to_job_weight: float = 0.6
@@ -45,6 +37,31 @@ class Settings(BaseSettings):
     education_match_weight: float = 0.10
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
+
+    @field_validator("debug", mode="before")
+    @classmethod
+    def parse_debug(cls, value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "on", "debug", "development", "dev"}:
+                return True
+            if normalized in {"0", "false", "no", "off", "release", "prod", "production"}:
+                return False
+        raise ValueError("debug must be a boolean-compatible value")
+
+    @field_validator("cors_origins", mode="before")
+    @classmethod
+    def parse_cors_origins(cls, value: Any) -> list[str]:
+        if isinstance(value, list):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip()
+            if not normalized:
+                return []
+            return [v.strip() for v in normalized.split(",") if v.strip()]
+        raise ValueError("cors_origins must be a list or comma-separated string")
 
 
 settings = Settings()

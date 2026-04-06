@@ -48,3 +48,7 @@ select = ["E", "F", "I", "UP"]
 testpaths = ["backend/tests"]
 pythonpath = ["backend"]
 asyncio_mode = "auto"
+addopts = "-m 'not live'"
+markers = [
+    "live: tests that make real external API calls (deselected by default)",
+]
