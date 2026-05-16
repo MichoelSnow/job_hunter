@@ -38,7 +38,7 @@ poetry install
 ### 4. Start the backend
 
 ```bash
-poetry run uvicorn main:app --reload --app-dir backend
+cd backend && poetry run uvicorn main:app --reload
 ```
 
 API runs at http://localhost:8000. Swagger docs at http://localhost:8000/docs.
@@ -63,9 +63,9 @@ All commands run from the **repo root** unless noted.
 
 | Command | Description |
 |---|---|
-| `poetry run uvicorn main:app --reload --app-dir backend` | Start dev server |
-| `cd backend && .venv/bin/python -m pytest` | Run all backend tests |
-| `cd backend && .venv/bin/python -m pytest backend/tests/unit/` | Unit tests only |
+| `cd backend && poetry run uvicorn main:app --reload` | Start dev server |
+| `poetry run pytest` | Run all backend tests |
+| `poetry run pytest backend/tests/unit/` | Unit tests only |
 | `poetry run ruff check .` | Lint |
 | `poetry run ruff format .` | Format |
 
