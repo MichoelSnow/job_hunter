@@ -28,8 +28,14 @@ _ALLOWED_HTML_TAGS = {
 _DROP_HTML_TAGS = {"script", "style", "iframe", "object", "embed", "form", "svg", "math", "noscript"}
 _ALLOWED_LINK_PROTOCOLS = ("http://", "https://", "mailto:")
 _SALARY_RANGE_RE = re.compile(
-    r"(?P<min_prefix>\$)?\s*(?P<min>\d[\d,]*(?:\.\d{1,2})?)\s*(?:to|[-\u2013\u2014])\s*"
-    r"(?P<max_prefix>\$)?\s*(?P<max>\d[\d,]*(?:\.\d{1,2})?)",
+    r"(?P<min_prefix>\$|USD\s*\$?)?\s*(?P<min>\d[\d,]*(?:\.\d{1,2})?)\s*"
+    r"(?:to|and|[-\u2013\u2014])\s*"
+    r"(?P<max_prefix>\$|USD\s*\$?)?\s*(?P<max>\d[\d,]*(?:\.\d{1,2})?)",
+    re.IGNORECASE,
+)
+_SALARY_SINGLE_RE = re.compile(
+    r"(?P<prefix>\$|USD\s*\$?)\s*(?P<value>\d[\d,]*(?:\.\d{1,2})?)"
+    r"|(?P<value_suffix>\d[\d,]*(?:\.\d{1,2})?)\s*USD\b",
     re.IGNORECASE,
 )
 
@@ -50,9 +56,12 @@ def infer_work_arrangement(
 
     if is_remote is True:
         return "remote"
-    if _contains_signal(text, ("hybrid",)):
+    if _contains_signal(text, ("hybrid",)) or _has_hybrid_office_schedule(text):
         return "hybrid"
-    if _contains_signal(text, ("in office", "in-office", "onsite", "on-site", "office-based")):
+    if _contains_signal(
+        text,
+        ("in office", "in-office", "in the office", "onsite", "on-site", "office-based"),
+    ):
         return "in_office"
     if _contains_signal(text, ("remote", "work from home")):
         return "remote"
@@ -148,6 +157,14 @@ def extract_salary_from_text(text: str | None) -> tuple[int | None, int | None, 
 
         return int(round(min_value)), int(round(max_value)), _infer_salary_period(lower), "USD"
 
+    for match in _SALARY_SINGLE_RE.finditer(clean_text):
+        raw_value = match.group("value") or match.group("value_suffix")
+        value = _parse_salary_number(raw_value)
+        if value is None:
+            continue
+        normalized_value = int(round(value))
+        return normalized_value, normalized_value, _infer_salary_period(lower), "USD"
+
     return None, None, None, None
 
 
@@ -167,7 +184,7 @@ def _infer_salary_period(text_lower: str) -> str | None:
         return "week"
     if any(signal in text_lower for signal in ("per month", "/month", "monthly")):
         return "month"
-    if any(signal in text_lower for signal in ("per year", "/year", "annually", "annual")):
+    if any(signal in text_lower for signal in ("per year", "/year", "/yr", "annually", "annual")):
         return "year"
     if any(signal in text_lower for signal in ("base salary", "salary range", "salary band")):
         return "year"
@@ -176,3 +193,10 @@ def _infer_salary_period(text_lower: str) -> str | None:
 
 def _contains_signal(text: str, signals: tuple[str, ...]) -> bool:
     return any(signal in text for signal in signals)
+
+
+def _has_hybrid_office_schedule(text: str) -> bool:
+    """Detect roles requiring office attendance for only part of the week."""
+    has_office_reference = "office" in text or "onsite" in text or "on-site" in text
+    has_partial_week_schedule = re.search(r"\b[1-4]\s+days?\s+(?:per|a)\s+week\b", text)
+    return has_office_reference and has_partial_week_schedule is not None

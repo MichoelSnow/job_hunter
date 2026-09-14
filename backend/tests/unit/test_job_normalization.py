@@ -1,3 +1,5 @@
+import pytest
+
 from app.services.job_normalization import (
     extract_salary_from_text,
     html_to_text,
@@ -42,6 +44,18 @@ class TestInferWorkArrangement:
             is_remote=False,
         )
         assert value == "unknown"
+
+    def test_hybrid_when_office_required_part_of_week(self):
+        value = infer_work_arrangement(
+            title="Director of Data",
+            location="New York, NY",
+            description=(
+                "This role will be based in our New York City office. "
+                "You must be willing to work in the office 3 days per week."
+            ),
+            is_remote=None,
+        )
+        assert value == "hybrid"
 
 
 class TestHtmlToText:
@@ -99,3 +113,31 @@ class TestExtractSalaryFromText:
             "to a competitive equity and benefits package."
         )
         assert values == (170000, 200000, "year", "USD")
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            (
+                "Compensation Range: USD $88,540.00 - USD $141,687.00/Annually.",
+                (88540, 141687, "year", "USD"),
+            ),
+            (
+                "Benefits include a competitive salary range of $170,000 per year.",
+                (170000, 170000, "year", "USD"),
+            ),
+            (
+                "This position has a hiring range of USD $114,004.00 - USD $219,960.00 /Yr.",
+                (114004, 219960, "year", "USD"),
+            ),
+            (
+                "The salary for the Manager, Data and Analytic is $80,000.00 per year.",
+                (80000, 80000, "year", "USD"),
+            ),
+            (
+                "Total target base compensation will be between $190,000 and $260,000 per year.",
+                (190000, 260000, "year", "USD"),
+            ),
+        ],
+    )
+    def test_extracts_salary_formats_from_historic_job_descriptions(self, text, expected):
+        assert extract_salary_from_text(text) == expected

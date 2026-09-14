@@ -23,10 +23,9 @@ def list_companies(
         query = query.filter(Company.is_priority == True)  # noqa: E712
     companies = query.order_by(Company.name).all()
 
-    scraped_sources = ("greenhouse", "lever", "workday", "ashby", "html_scraper")
     counts = (
         db.query(Job.company_id, func.count(Job.id))
-        .filter(Job.company_id.isnot(None), Job.source.in_(scraped_sources))
+        .filter(Job.company_id.isnot(None))
         .group_by(Job.company_id)
         .all()
     )
@@ -38,7 +37,7 @@ def list_companies(
             from_attributes=True,
         ).model_copy(
             update={
-                "scraped_job_count": int(count_by_company_id.get(company.id, 0)),
+                "job_count": int(count_by_company_id.get(company.id, 0)),
                 "scrape_error": company.scrape_last_status == "error",
             }
         )

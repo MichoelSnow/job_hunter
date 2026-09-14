@@ -8,7 +8,11 @@ import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from app.config.settings import settings
-from app.services.job_normalization import html_to_text, infer_work_arrangement
+from app.services.job_normalization import (
+    extract_salary_from_text,
+    html_to_text,
+    infer_work_arrangement,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +70,13 @@ class JSearchClient:
     def normalize(self, raw: dict[str, Any]) -> dict[str, Any]:
         description = html_to_text(raw.get("job_description"))
         location = f"{raw.get('job_city', '')}, {raw.get('job_state', '')}".strip(", ")
+        salary_min, salary_max, salary_period, salary_currency = _salary_with_description_fallback(
+            raw.get("job_min_salary"),
+            raw.get("job_max_salary"),
+            raw.get("job_salary_period"),
+            raw.get("job_salary_currency"),
+            description,
+        )
         return {
             "external_id": f"js_{raw.get('job_id')}",
             "title": raw.get("job_title") or "",
@@ -77,10 +88,10 @@ class JSearchClient:
                 description=description,
                 is_remote=raw.get("job_is_remote"),
             ),
-            "salary_min": raw.get("job_min_salary"),
-            "salary_max": raw.get("job_max_salary"),
-            "salary_currency": raw.get("job_salary_currency") or "USD",
-            "salary_period": (raw.get("job_salary_period") or "").lower() or None,
+            "salary_min": salary_min,
+            "salary_max": salary_max,
+            "salary_currency": salary_currency,
+            "salary_period": salary_period,
             "employment_type": (raw.get("job_employment_type") or "").lower() or None,
             "posted_date": _parse_date(raw.get("job_posted_at_datetime_utc")),
             "discovered_date": date.today().isoformat(),
@@ -125,6 +136,13 @@ class SerplyClient:
     def normalize(self, raw: dict[str, Any]) -> dict[str, Any]:
         description = html_to_text(raw.get("description"))
         location = raw.get("location") or ""
+        salary_min, salary_max, salary_period, salary_currency = _salary_with_description_fallback(
+            None,
+            None,
+            None,
+            None,
+            description,
+        )
         return {
             "external_id": f"sp_{raw.get('job_id') or raw.get('link', '')[-32:]}",
             "title": raw.get("title") or "",
@@ -135,10 +153,10 @@ class SerplyClient:
                 location=location,
                 description=description,
             ),
-            "salary_min": None,
-            "salary_max": None,
-            "salary_currency": "USD",
-            "salary_period": None,
+            "salary_min": salary_min,
+            "salary_max": salary_max,
+            "salary_currency": salary_currency,
+            "salary_period": salary_period,
             "employment_type": None,
             "posted_date": raw.get("date_posted"),
             "discovered_date": date.today().isoformat(),
@@ -199,6 +217,25 @@ def _parse_date(value: str | None) -> str | None:
     if not value:
         return None
     return value[:10]
+
+
+def _salary_with_description_fallback(
+    salary_min: Any,
+    salary_max: Any,
+    salary_period: Any,
+    salary_currency: Any,
+    description: str,
+) -> tuple[Any, Any, str | None, str]:
+    """Use provider salary fields first, filling missing values from the JD."""
+    parsed_min, parsed_max, parsed_period, parsed_currency = extract_salary_from_text(description)
+    normalized_period = str(salary_period or "").lower() or parsed_period
+    normalized_currency = salary_currency or parsed_currency or "USD"
+    return (
+        salary_min if salary_min is not None else parsed_min,
+        salary_max if salary_max is not None else parsed_max,
+        normalized_period,
+        normalized_currency,
+    )
 
 
 def _load_companies_for_scrape() -> list[dict]:

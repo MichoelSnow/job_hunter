@@ -215,7 +215,7 @@ export default function JobsPage() {
     work_arrangement: "",
   });
   const [statusFilter, setStatusFilter] = useState("active");
-  const [sortState, setSortState] = useState({ key: null, direction: null });
+  const [sortState, setSortState] = useState({ key: "discovered_date", direction: "desc" });
   const [selectedId, setSelectedId] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState(loadVisibleColumns);
   const [page, setPage] = useState(1);

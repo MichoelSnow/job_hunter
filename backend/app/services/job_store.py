@@ -8,6 +8,11 @@ from sqlalchemy.orm import Session
 from app.models.company import Company
 from app.models.job import Job, JobRequirement
 from app.models.tracking import ApiUsageTracking
+from app.services.job_normalization import (
+    extract_salary_from_text,
+    html_to_text,
+    infer_work_arrangement,
+)
 
 logger = logging.getLogger(__name__)
 _JOB_COLUMN_KEYS = set(Job.__table__.columns.keys())
@@ -209,6 +214,84 @@ def bulk_upsert_jobs(
     db.commit()
     logger.info("Upserted %d jobs: %d new, %d updated", inserted + updated, inserted, updated)
     return inserted, updated
+
+
+def backfill_missing_salaries(db: Session) -> int:
+    """Fill missing salary fields from descriptions already stored in the database."""
+    updated = 0
+    jobs = (
+        db.query(Job)
+        .filter((Job.salary_min.is_(None)) | (Job.salary_max.is_(None)))
+        .all()
+    )
+
+    for job in jobs:
+        stored_text = _stored_job_text(job)
+        salary_min, salary_max, salary_period, salary_currency = extract_salary_from_text(stored_text)
+        if salary_min is None and salary_max is None:
+            continue
+
+        changed = False
+        if job.salary_min is None and salary_min is not None:
+            job.salary_min = salary_min
+            changed = True
+        if job.salary_max is None and salary_max is not None:
+            job.salary_max = salary_max
+            changed = True
+        if changed and not job.salary_period and salary_period:
+            job.salary_period = salary_period
+        if changed and not job.salary_currency and salary_currency:
+            job.salary_currency = salary_currency
+        if changed:
+            updated += 1
+
+    db.commit()
+    logger.info("Backfilled salaries for %d historic jobs", updated)
+    return updated
+
+
+def _stored_job_text(job: Job) -> str:
+    values: list[str] = [job.description or ""]
+    raw_data = job.raw_data if isinstance(job.raw_data, dict) else {}
+    for key in (
+        "job_description",
+        "description",
+        "descriptionPlain",
+        "descriptionBodyPlain",
+        "descriptionHtml",
+        "content",
+        "additionalPlain",
+        "openingPlain",
+    ):
+        value = raw_data.get(key)
+        if value:
+            values.append(html_to_text(str(value)))
+    return " ".join(value for value in values if value)
+
+
+def backfill_missing_work_arrangements(db: Session) -> int:
+    """Fill unknown work arrangements from descriptions already stored in the database."""
+    updated = 0
+    jobs = (
+        db.query(Job)
+        .filter((Job.work_arrangement.is_(None)) | (Job.work_arrangement == "unknown"))
+        .all()
+    )
+
+    for job in jobs:
+        arrangement = infer_work_arrangement(
+            title=job.title,
+            location=job.location,
+            description=_stored_job_text(job),
+        )
+        if arrangement == "unknown":
+            continue
+        job.work_arrangement = arrangement
+        updated += 1
+
+    db.commit()
+    logger.info("Backfilled work arrangements for %d historic jobs", updated)
+    return updated
 
 
 def mark_missing_scraped_jobs_closed(

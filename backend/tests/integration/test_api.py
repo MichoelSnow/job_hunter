@@ -644,7 +644,7 @@ class TestCompaniesAPI:
         names = [company["name"] for company in post_delete.json()]
         assert "Delete Again" not in names
 
-    def test_list_companies_includes_scraped_job_count_independent_of_filters(self, client, db_session):
+    def test_list_companies_includes_all_job_sources_independent_of_filters(self, client, db_session):
         company = Company(name="Count Co")
         db_session.add(company)
         db_session.flush()
@@ -692,7 +692,7 @@ class TestCompaniesAPI:
         assert resp.status_code == 200
         payload = next((item for item in resp.json() if item["name"] == "Count Co"), None)
         assert payload is not None
-        assert payload["scraped_job_count"] == 2
+        assert payload["job_count"] == 3
         assert payload["scrape_error"] is False
 
     def test_list_companies_marks_scrape_error(self, client, db_session):
@@ -709,7 +709,7 @@ class TestCompaniesAPI:
         payload = next((item for item in resp.json() if item["name"] == "Error Co"), None)
         assert payload is not None
         assert payload["scrape_error"] is True
-        assert payload["scraped_job_count"] == 0
+        assert payload["job_count"] == 0
         assert payload["scrape_last_error"] == "400 Client Error"
 
 

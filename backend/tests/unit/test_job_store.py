@@ -7,6 +7,8 @@ from sqlalchemy.orm import sessionmaker
 from app.db.base import Base
 import app.models  # noqa: F401 — register all models
 from app.services.job_store import (
+    backfill_missing_salaries,
+    backfill_missing_work_arrangements,
     bulk_upsert_jobs,
     mark_missing_scraped_jobs_closed,
     record_api_usage,
@@ -146,6 +148,63 @@ class TestBulkUpsertJobs:
         bulk_upsert_jobs(db, [_job(company_name="Health Corp"), _job("js_2", company_name="Data Co")])
         count = db.query(Company).count()
         assert count == 2
+
+
+class TestBackfillMissingSalaries:
+    def test_fills_missing_salary_from_description(self, db):
+        from app.models.job import Job
+
+        job = _job(
+            salary_min=None,
+            salary_max=None,
+            description="The salary range for this position is: $124,000 - $335,000.",
+        )
+        upsert_job(db, job, company_id=None)
+        db.commit()
+
+        updated = backfill_missing_salaries(db)
+
+        row = db.query(Job).filter(Job.external_id == "js_abc").first()
+        assert updated == 1
+        assert row is not None
+        assert (row.salary_min, row.salary_max, row.salary_period) == (124000, 335000, "year")
+
+    def test_does_not_overwrite_known_salary(self, db):
+        from app.models.job import Job
+
+        job = _job(
+            salary_min=100000,
+            salary_max=150000,
+            description="The salary range for this position is: $200,000 - $300,000.",
+        )
+        upsert_job(db, job, company_id=None)
+        db.commit()
+
+        updated = backfill_missing_salaries(db)
+
+        row = db.query(Job).filter(Job.external_id == "js_abc").first()
+        assert updated == 0
+        assert row is not None
+        assert (row.salary_min, row.salary_max) == (100000, 150000)
+
+
+class TestBackfillMissingWorkArrangements:
+    def test_fills_hybrid_arrangement_from_description(self, db):
+        from app.models.job import Job
+
+        job = _job(
+            work_arrangement="unknown",
+            description="Work in the New York office 3 days per week.",
+        )
+        upsert_job(db, job, company_id=None)
+        db.commit()
+
+        updated = backfill_missing_work_arrangements(db)
+
+        row = db.query(Job).filter(Job.external_id == "js_abc").first()
+        assert updated == 1
+        assert row is not None
+        assert row.work_arrangement == "hybrid"
 
 
 class TestRecordApiUsage:

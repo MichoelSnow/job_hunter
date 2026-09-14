@@ -98,4 +98,16 @@ Trigger only scrapers:
 curl -X POST http://localhost:8000/api/jobs/refresh/scrapers
 ```
 
+To fill salary fields for existing jobs using their stored descriptions:
+
+```bash
+curl -X POST http://localhost:8000/api/jobs/backfill-salaries
+```
+
+To classify unknown work arrangements for existing jobs:
+
+```bash
+curl -X POST http://localhost:8000/api/jobs/backfill-work-arrangements
+```
+
 Or use the UI buttons: "Refresh API Jobs" and "Refresh Scraped Jobs".

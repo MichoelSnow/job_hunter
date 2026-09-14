@@ -110,7 +110,7 @@ For scraper-sourced jobs, if a role disappears from a successful scrape for that
 
 Scraper target settings are sourced from the `companies` DB table (edited via the Companies page), including Workday board/instance and HTML selectors.
 
-Each company row also stores scraper run health (`scrape_last_status`, `scrape_last_error`) so the Companies page can distinguish "0 jobs found" from "scrape failed". The Companies API returns `scraped_job_count` computed from persisted scraper-source jobs, independent of UI post-collection filters.
+Each company row also stores scraper run health (`scrape_last_status`, `scrape_last_error`) so the Companies page can distinguish "0 jobs found" from "scrape failed". The Companies API returns `job_count` computed from all persisted jobs, independent of UI post-collection filters. The Companies page sorts by this count descending so companies with scraped jobs appear first while API-only companies remain visible.
 
 ### DB Migrations
 Schema is recreated freely during Phases 0–5. Alembic will be added in Phase 6 once the schema stabilizes.

@@ -17,17 +17,67 @@ const EMPTY_COMPANY_FORM = {
   html_selectors_text: "",
 };
 
+const SORTABLE_COLUMNS = [
+  { key: "name", label: "Name" },
+  { key: "job_count", label: "Jobs" },
+  { key: "ats_type", label: "ATS Type" },
+  { key: "ats_id", label: "ATS ID" },
+];
+
+function compareCompanyValues(left, right, key) {
+  const leftValue = left[key];
+  const rightValue = right[key];
+  const leftMissing = leftValue == null || leftValue === "";
+  const rightMissing = rightValue == null || rightValue === "";
+
+  if (leftMissing || rightMissing) {
+    if (leftMissing && rightMissing) return 0;
+    return leftMissing ? 1 : -1;
+  }
+
+  if (key === "job_count") return Number(leftValue) - Number(rightValue);
+  return String(leftValue).localeCompare(String(rightValue), undefined, { sensitivity: "base" });
+}
+
 export default function CompaniesPage() {
   const queryClient = useQueryClient();
   const [newCompany, setNewCompany] = useState(EMPTY_COMPANY_FORM);
   const [editingId, setEditingId] = useState(null);
   const [editData, setEditData] = useState({});
   const [error, setError] = useState(null);
+  const [sortState, setSortState] = useState({ key: "ats_type", direction: "asc" });
 
   const { data: companies = [], isLoading } = useQuery({
     queryKey: ["companies"],
     queryFn: getCompanies,
   });
+
+  const sortedCompanies = [...companies].sort((left, right) => {
+    const leftMissing = left[sortState.key] == null || left[sortState.key] === "";
+    const rightMissing = right[sortState.key] == null || right[sortState.key] === "";
+    if (leftMissing || rightMissing) {
+      if (leftMissing && rightMissing) return 0;
+      return leftMissing ? 1 : -1;
+    }
+
+    const comparison = compareCompanyValues(left, right, sortState.key);
+    if (comparison !== 0) {
+      return sortState.direction === "asc" ? comparison : -comparison;
+    }
+    return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+  });
+
+  function toggleSort(key) {
+    setSortState((current) => ({
+      key,
+      direction: current.key === key && current.direction === "asc" ? "desc" : "asc",
+    }));
+  }
+
+  function sortIndicator(key) {
+    if (sortState.key !== key) return "sort";
+    return sortState.direction;
+  }
 
   const createMutation = useMutation({
     mutationFn: createCompany,
@@ -209,10 +259,18 @@ export default function CompaniesPage() {
         <table className="w-full text-sm">
           <thead className="bg-gray-50 border-b text-xs text-gray-500 uppercase tracking-wide">
             <tr>
-              <th className="text-left px-4 py-2">Name</th>
-              <th className="text-left px-4 py-2">Jobs</th>
-              <th className="text-left px-4 py-2">ATS Type</th>
-              <th className="text-left px-4 py-2">ATS ID</th>
+              {SORTABLE_COLUMNS.map((column) => (
+                <th key={column.key} className="text-left px-4 py-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleSort(column.key)}
+                    className="inline-flex items-center gap-1 hover:text-gray-900"
+                  >
+                    {column.label}
+                    <span aria-hidden="true" className="text-gray-400">{sortIndicator(column.key)}</span>
+                  </button>
+                </th>
+              ))}
               <th className="px-4 py-2"></th>
             </tr>
           </thead>
@@ -221,12 +279,12 @@ export default function CompaniesPage() {
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-gray-400">Loading...</td>
               </tr>
-            ) : companies.length === 0 ? (
+            ) : sortedCompanies.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-8 text-center text-gray-400">No companies yet.</td>
               </tr>
             ) : (
-              companies.map((company) => (
+              sortedCompanies.map((company) => (
                 <tr key={company.id} className="border-b last:border-0 hover:bg-gray-50">
                   <td className="px-4 py-2 font-medium text-gray-900">
                     {editingId === company.id ? (
@@ -266,7 +324,7 @@ export default function CompaniesPage() {
                         !
                       </span>
                     ) : (
-                      company.scraped_job_count ?? 0
+                      company.job_count ?? 0
                     )}
                   </td>
                   <td className="px-4 py-2 text-gray-600">

@@ -272,6 +272,45 @@ class TestDiscoveryPipeline:
         assert job is not None
         assert job.description == "Hybrid role & cross-functional."
 
+    def test_jsearch_salary_falls_back_to_description(self, db_session):
+        data = _fake_jsearch_response(1)
+        data["data"][0].update(
+            {
+                "job_description": (
+                    "The salary range for this position is: $124,000 - $335,000. "
+                    "Actual compensation depends on qualifications."
+                ),
+                "job_min_salary": None,
+                "job_max_salary": None,
+                "job_salary_currency": None,
+                "job_salary_period": None,
+            }
+        )
+        self._run_discovery(db_session, jsearch_data=data, serply_data={"jobs": []})
+        job = db_session.query(Job).first()
+        assert job is not None
+        assert (job.salary_min, job.salary_max, job.salary_period, job.salary_currency) == (
+            124000,
+            335000,
+            "year",
+            "USD",
+        )
+
+    def test_serply_salary_is_extracted_from_description(self, db_session):
+        data = _fake_serply_response(1)
+        data["jobs"][0]["description"] = (
+            "The target base salary range for this position is $177,200 - $221,500."
+        )
+        self._run_discovery(db_session, jsearch_data={"data": []}, serply_data=data)
+        job = db_session.query(Job).first()
+        assert job is not None
+        assert (job.salary_min, job.salary_max, job.salary_period, job.salary_currency) == (
+            177200,
+            221500,
+            "year",
+            "USD",
+        )
+
     def test_remote_jobs_filtered_out(self, db_session):
         """Jobs marked as remote should remain stored but be hidden by user filters."""
         data = _fake_jsearch_response(3)

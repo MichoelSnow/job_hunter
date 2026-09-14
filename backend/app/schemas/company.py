@@ -36,7 +36,7 @@ class CompanyResponse(CompanyBase):
     last_scraped_at: datetime | None = None
     scrape_last_status: str | None = None
     scrape_last_error: str | None = None
-    scraped_job_count: int = 0
+    job_count: int = 0
     scrape_error: bool = False
     created_at: datetime
     updated_at: datetime

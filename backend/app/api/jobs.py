@@ -210,6 +210,42 @@ def refresh_jobs_api(background_tasks: BackgroundTasks) -> dict[str, str]:
     return {"status": "API job discovery started"}
 
 
+@router.post("/backfill-salaries")
+def backfill_salaries(background_tasks: BackgroundTasks) -> dict[str, str]:
+    """Backfill missing salaries from descriptions stored in existing jobs."""
+    from app.db.session import SessionLocal
+    from app.services.job_store import backfill_missing_salaries
+
+    def run_backfill() -> None:
+        db = SessionLocal()
+        try:
+            backfill_missing_salaries(db)
+        finally:
+            db.close()
+
+    background_tasks.add_task(run_backfill)
+    logger.info("Historic salary backfill triggered via API")
+    return {"status": "Historic salary backfill started"}
+
+
+@router.post("/backfill-work-arrangements")
+def backfill_work_arrangements(background_tasks: BackgroundTasks) -> dict[str, str]:
+    """Backfill unknown work arrangements from stored job descriptions."""
+    from app.db.session import SessionLocal
+    from app.services.job_store import backfill_missing_work_arrangements
+
+    def run_backfill() -> None:
+        db = SessionLocal()
+        try:
+            backfill_missing_work_arrangements(db)
+        finally:
+            db.close()
+
+    background_tasks.add_task(run_backfill)
+    logger.info("Historic work arrangement backfill triggered via API")
+    return {"status": "Historic work arrangement backfill started"}
+
+
 @router.post("/refresh/scrapers")
 def refresh_jobs_scrapers(background_tasks: BackgroundTasks) -> dict[str, str]:
     """Trigger scraper-only discovery in the background."""
