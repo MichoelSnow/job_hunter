@@ -35,7 +35,7 @@ This is the project-specific reference for coding standards, testing, tooling, a
 - Test validation, empty results, malformed data, partial source failures, retries, and database state transitions where relevant.
 - Keep real external API calls in tests marked `@pytest.mark.live`.
 - The default suite excludes live tests through the pytest configuration.
-- Run from `backend/`:
+- Run from the repository root using the Poetry-managed environment:
 
   ```bash
   poetry run pytest

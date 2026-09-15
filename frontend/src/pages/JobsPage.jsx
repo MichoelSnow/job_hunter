@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import {
   getJob,
+  getJobLocations,
   getJobs,
   getRefreshStatus,
   hideJob,
@@ -214,12 +215,13 @@ export default function JobsPage() {
 
   const isActiveParam =
     statusFilter === "active" ? true : statusFilter === "hidden" ? false : undefined;
+  const locationStatusParam = isActiveParam === undefined ? {} : { is_active: isActiveParam };
   const skip = (page - 1) * PAGE_SIZE;
   const queryParams = {
     skip,
     limit: PAGE_SIZE,
     ...(filters.min_score !== "" && { min_score: Number(filters.min_score) }),
-    ...(filters.location !== "" && { location: filters.location }),
+    ...(filters.location !== "" && { location_group: filters.location }),
     ...(filters.days !== "" && { days: Number(filters.days) }),
     ...(isActiveParam !== undefined && { is_active: isActiveParam }),
     ...(sortState.key && { sort_by: sortState.key, sort_direction: sortState.direction }),
@@ -244,6 +246,11 @@ export default function JobsPage() {
     queryKey: ["refreshStatus"],
     queryFn: getRefreshStatus,
     refetchInterval: (query) => (query.state.data?.status === "running" ? 10000 : 30000),
+  });
+
+  const { data: locationOptions = [] } = useQuery({
+    queryKey: ["jobLocationGroups", locationStatusParam.is_active],
+    queryFn: () => getJobLocations(locationStatusParam),
   });
 
   useEffect(() => {
@@ -345,13 +352,18 @@ export default function JobsPage() {
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-0.5">Location</label>
-            <input
-              type="text"
+            <select
               value={filters.location}
               onChange={(e) => setFilter("location", e.target.value)}
-              placeholder="City, state, or country"
               className="w-52 border rounded px-2 py-1 text-sm"
-            />
+            >
+              <option value="">All</option>
+              {locationOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-0.5">Days old</label>

@@ -77,8 +77,8 @@ All commands run from the **repo root** unless noted.
 | Command | Description |
 |---|---|
 | `poetry run uvicorn main:app --reload --app-dir backend` | Start dev server |
-| `.venv/bin/python -m pytest` | Run all backend tests |
-| `.venv/bin/python -m pytest backend/tests/unit/` | Unit tests only |
+| `poetry run pytest` | Run all backend tests |
+| `poetry run pytest backend/tests/unit/` | Unit tests only |
 | `poetry run ruff check .` | Lint |
 | `poetry run ruff format .` | Format |
 

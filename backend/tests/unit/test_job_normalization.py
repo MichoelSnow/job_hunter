@@ -3,6 +3,7 @@ from app.services.job_normalization import (
     extract_salary_from_text,
     html_to_text,
     infer_work_arrangement,
+    location_group_keys,
     normalize_location,
     sanitize_description_html,
 )
@@ -62,25 +63,43 @@ class TestNormalizeLocation:
     @pytest.mark.parametrize(
         ("raw", "expected"),
         [
-            ("New york city", "New York City, NY"),
-            ("New York, NY", "New York City, NY"),
-            ("New York", "New York City, NY"),
-            ("NY", "New York City, NY"),
-            ("New York City, New York", "New York City, NY"),
-            ("New York, New York, United States", "New York City, NY"),
-            ("New York Office", "New York City, NY"),
+            ("New york city", "NY, NY"),
+            ("New York, NY", "NY, NY"),
+            ("New York", "NY, NY"),
+            ("NY", "NY, NY"),
+            ("New York City, New York", "NY, NY"),
+            ("New York, New York, United States", "NY, NY"),
+            ("New York Office", "NY, NY"),
+            ("Manhattan, NY", "Manhattan, NY"),
+            ("New York (Hybrid)", "NY, NY"),
             ("SF Office", "San Francisco, CA"),
-            ("Sf; Ny Hybrid Optional", "San Francisco, CA; New York City, NY"),
-            ("Remote (SF or NY hybrid optional)", "San Francisco, CA; New York City, NY"),
+            ("Sf; Ny Hybrid Optional", "San Francisco, CA; NY, NY"),
+            ("Remote (SF or NY hybrid optional)", "San Francisco, CA; NY, NY"),
             ("2 Locations", None),
-            ("Remote, United States", "United States"),
+            ("Remote, United States", "Remote"),
+            ("U.S. Remote", "Remote"),
             ("Hybrid - Palo Alto or San Francisco", "Palo Alto; San Francisco, CA"),
-            ("New York, NY or Remote", "New York City, NY"),
+            ("New York, NY or Remote", "NY, NY"),
             ("None, None", None),
         ],
     )
     def test_normalizes_city_level_locations(self, raw, expected):
         assert normalize_location(raw) == expected
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("New York City, New York", {"nyc"}),
+            ("Manhattan, NY", {"nyc"}),
+            ("Buffalo, NY", {"ny_state"}),
+            ("New Jersey", {"state:NJ"}),
+            ("Pune, Maharashtra, India", {"outside_us"}),
+            ("Remote, United States", {"remote"}),
+            ("None, None", {"unknown"}),
+        ],
+    )
+    def test_assigns_location_filter_groups(self, raw, expected):
+        assert location_group_keys(raw) == expected
 
 
 class TestHtmlToText:

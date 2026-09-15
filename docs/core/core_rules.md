@@ -11,6 +11,15 @@ These rules apply to all work in this repository.
 - Keep business logic out of HTTP routers and React page components. Backend behavior belongs in `backend/app/services/`; frontend API access belongs in `frontend/src/services/`.
 - Do not create a new top-level directory without updating `docs/project/architecture.md`.
 
+## Proportionality and simplicity
+
+- This is a local, single-user, solo-developer application. Optimize for the user's actual workflow and the repository's current scale.
+- Treat simplicity and low maintenance cost as explicit design goals, not merely implementation preferences.
+- Do not add enterprise patterns, infrastructure, safeguards, compatibility layers, abstractions, or exhaustive data handling unless the project has a demonstrated need for them.
+- Weigh the concrete utility of every non-trivial addition against the maintenance burden and technical debt it creates.
+- Raise questions when requirements or trade-offs are unclear, but do not assume generic industry practices are appropriate for this project.
+- Prefer a deliberately coarse solution that satisfies the user's goal over a more complete solution that adds complexity without useful benefit.
+
 ## Documentation
 
 - Keep one authoritative home for each rule, contract, or design decision.

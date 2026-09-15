@@ -105,6 +105,24 @@ _US_STATES = {
     "district of columbia": "DC",
 }
 _US_STATE_CODES = set(_US_STATES.values())
+_COMMON_COUNTRIES = {
+    "australia",
+    "canada",
+    "china",
+    "france",
+    "germany",
+    "india",
+    "ireland",
+    "italy",
+    "japan",
+    "mexico",
+    "netherlands",
+    "singapore",
+    "spain",
+    "switzerland",
+    "united kingdom",
+    "united states",
+}
 _NYC_ALIASES = {
     "new york city": "New York City",
     "new york": "New York City",
@@ -115,7 +133,17 @@ _NYC_ALIASES = {
     "the bronx": "Bronx",
     "bronx": "Bronx",
     "staten island": "Staten Island",
+    "ny": "NYC",
 }
+_NYC_BOROUGHS = {
+    "manhattan": "Manhattan",
+    "brooklyn": "Brooklyn",
+    "queens": "Queens",
+    "the bronx": "Bronx",
+    "bronx": "Bronx",
+    "staten island": "Staten Island",
+}
+_NYC_DISPLAY = "NY, NY"
 _CITY_ALIASES = {
     "sf": "San Francisco",
     "s.f.": "San Francisco",
@@ -134,6 +162,16 @@ _ARRANGEMENT_ONLY_LOCATIONS = {
     "in office",
     "in-office",
 }
+_REMOTE_ONLY_VALUES = {
+    "remote",
+    "remote us",
+    "remote usa",
+    "remote united states",
+    "us remote",
+    "u s remote",
+    "usa remote",
+    "united states remote",
+}
 
 
 def normalize_location(value: str | None) -> str | None:
@@ -145,8 +183,23 @@ def normalize_location(value: str | None) -> str | None:
     if not text or _LOCATION_PLACEHOLDER_RE.fullmatch(text):
         return None
 
+    remote_candidate = re.sub(r"[^a-z]+", " ", text.casefold()).strip()
+    if remote_candidate in _REMOTE_ONLY_VALUES:
+        return "Remote"
+
     text = re.sub(
-        r"^\s*(?:remote|hybrid|on[- ]?site|in[- ]?office)\s*[-:;,]?\s*",
+        r"\bremote\b\s*[-,:;]?\s*(?:u\.?s\.?|usa|united states)?",
+        " ",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"\([^)]*hub cities[^)]*\)", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\bhybrid\b|\boptional\b", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\(\s*(?:(?:or|and)\s*|[,;]\s*)*\)", " ", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s+", " ", text).strip(" ,;-–—")
+
+    text = re.sub(
+        r"^\s*(?:on[- ]?site|in[- ]?office)\b\s*[-:;,]?\s*",
         "",
         text,
         flags=re.IGNORECASE,
@@ -181,24 +234,92 @@ def normalize_location(value: str | None) -> str | None:
 def parse_locations(value: str | None) -> list[dict[str, str | None]]:
     """Parse source location text into city/state/country records."""
     display = normalize_location(value)
-    if not display:
+    if not display or display == "Remote":
         return []
 
     records: list[dict[str, str | None]] = []
     for item in display.split("; "):
         parts = [part.strip() for part in item.split(",")]
-        if len(parts) == 1 and parts[0] == "United States":
+        if parts == ["United States"]:
             records.append(
                 {"city": None, "state": None, "country": "United States", "display_name": item}
             )
             continue
+        if parts == ["Remote"]:
+            continue
+
+        if len(parts) == 1 and parts[0].casefold() in _US_STATES:
+            state = _US_STATES[parts[0].casefold()]
+            records.append(
+                {"city": None, "state": state, "country": "United States", "display_name": item}
+            )
+            continue
+        if len(parts) == 1 and parts[0].casefold() in _US_STATE_CODES:
+            records.append(
+                {
+                    "city": None,
+                    "state": parts[0].upper(),
+                    "country": "United States",
+                    "display_name": item,
+                }
+            )
+            continue
+
         city = parts[0] or None
-        state = parts[1] if len(parts) > 1 else None
-        country = parts[2] if len(parts) > 2 else None
-        if country is None and state and state.casefold() in {"united states", "usa", "us"}:
-            country, state = "United States", None
+        state = None
+        country = None
+        if len(parts) >= 2:
+            region = parts[1].casefold()
+            if region in _US_STATES:
+                state = _US_STATES[region]
+                country = "United States"
+            elif region in _US_STATE_CODES:
+                state = parts[1].upper()
+                country = "United States"
+            elif region in _COMMON_COUNTRIES:
+                country = "United States" if region == "united states" else parts[1]
+            elif len(parts) >= 3 and parts[-1].casefold() in _COMMON_COUNTRIES:
+                state = parts[1]
+                country = (
+                    "United States"
+                    if parts[-1].casefold() == "united states"
+                    else parts[-1]
+                )
+            else:
+                state = parts[1]
+        if len(parts) >= 3 and parts[-1].casefold() in _COMMON_COUNTRIES:
+            country = (
+                "United States" if parts[-1].casefold() == "united states" else parts[-1]
+            )
+            if state == country:
+                state = None
         records.append({"city": city, "state": state, "country": country, "display_name": item})
     return records
+
+
+def location_group_keys(value: str | None) -> set[str]:
+    """Return the geographic filter groups represented by a source location."""
+    normalized = normalize_location(value)
+    if normalized == "Remote":
+        return {"remote"}
+    if not normalized:
+        return {"unknown"}
+
+    groups: set[str] = set()
+    for record in parse_locations(value):
+        city = (record["city"] or "").casefold()
+        state = (record["state"] or "").upper()
+        country = (record["country"] or "").casefold()
+        if city in {"new york", "new york city", "ny", "nyc", *(_NYC_BOROUGHS.keys())}:
+            groups.add("nyc")
+        elif state == "NY":
+            groups.add("ny_state")
+        elif state in _US_STATE_CODES:
+            groups.add(f"state:{state}")
+        elif country and country != "united states":
+            groups.add("outside_us")
+
+    return groups or {"unknown"}
 
 
 def _normalize_location_part(value: str) -> str | None:
@@ -212,12 +333,20 @@ def _normalize_location_part(value: str) -> str | None:
         if re.fullmatch(r"\d+\s+locations?", city, flags=re.IGNORECASE):
             return None
         city_key = city.casefold()
+        if city_key in _NYC_ALIASES and city_key not in _NYC_BOROUGHS:
+            return _NYC_DISPLAY
+        if city_key in _NYC_BOROUGHS:
+            return f"{_NYC_BOROUGHS[city_key]}, NY"
         if city_key in _CITY_ALIASES:
             city = _CITY_ALIASES[city_key]
-        elif city_key in _NYC_ALIASES:
-            city = _NYC_ALIASES[city_key]
         if city_key in {"united states", "usa", "us", "u.s.", "u.s.a."}:
             return "United States"
+        if city_key in _US_STATES:
+            return city.title()
+        if city_key.upper() in _US_STATE_CODES:
+            return next(
+                name.title() for name, code in _US_STATES.items() if code == city_key.upper()
+            )
         state = _INFERRED_CITY_STATES.get(city.casefold())
         if state:
             return f"{city}, {state}"
@@ -226,8 +355,10 @@ def _normalize_location_part(value: str) -> str | None:
     city = re.sub(r"\s+office$", "", cleaned[0], flags=re.IGNORECASE)
     region = cleaned[-1].casefold()
     city_key = city.casefold()
-    if city_key in _NYC_ALIASES:
-        city = _NYC_ALIASES[city_key]
+    if city_key in _NYC_ALIASES and city_key not in _NYC_BOROUGHS:
+        return _NYC_DISPLAY
+    if city_key in _NYC_BOROUGHS:
+        city = _NYC_BOROUGHS[city_key]
     elif city_key == "new york" and region in {"ny", "new york"}:
         city = "New York"
     if region.upper() in _US_STATE_CODES:
@@ -236,7 +367,7 @@ def _normalize_location_part(value: str) -> str | None:
         return f"{city.title()}, {_US_STATES[region]}"
     if region in {"united states", "usa", "us", "u.s.", "u.s.a."}:
         if city.casefold() in {"new york", "new york city"}:
-            return "New York City, NY"
+            return _NYC_DISPLAY
         return city.title()
     return f"{city.title()}, {cleaned[-1].title()}"
 

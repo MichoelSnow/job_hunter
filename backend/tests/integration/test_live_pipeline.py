@@ -11,7 +11,7 @@ parsing) that unit tests with fake data can miss.
 Marked `live` — excluded from the default pytest run.
 To run explicitly (load .env first):
     set -a; source .env; set +a
-    .venv/bin/python -m pytest -m live -v -s
+    poetry run pytest -m live -v -s
 """
 
 import os

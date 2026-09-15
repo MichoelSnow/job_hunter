@@ -12,6 +12,7 @@ from app.models.job import Job, JobLocation
 from app.schemas.job import JobListResponse, JobResponse
 from app.services.job_normalization import (
     html_to_text,
+    location_group_keys,
     normalize_location,
     sanitize_description_html,
 )
@@ -30,10 +31,70 @@ _NYC_CITIES = (
     "Bronx",
     "Staten Island",
 )
+_LOCATION_GROUP_LABELS = {
+    "nyc": "NYC",
+    "ny_state": "NY State (not NYC)",
+    "outside_us": "Outside US",
+    "remote": "Remote",
+    "unknown": "Unknown",
+}
+_US_STATE_LABELS = {
+    "AL": "Alabama",
+    "AK": "Alaska",
+    "AZ": "Arizona",
+    "AR": "Arkansas",
+    "CA": "California",
+    "CO": "Colorado",
+    "CT": "Connecticut",
+    "DE": "Delaware",
+    "FL": "Florida",
+    "GA": "Georgia",
+    "HI": "Hawaii",
+    "ID": "Idaho",
+    "IL": "Illinois",
+    "IN": "Indiana",
+    "IA": "Iowa",
+    "KS": "Kansas",
+    "KY": "Kentucky",
+    "LA": "Louisiana",
+    "ME": "Maine",
+    "MD": "Maryland",
+    "MA": "Massachusetts",
+    "MI": "Michigan",
+    "MN": "Minnesota",
+    "MS": "Mississippi",
+    "MO": "Missouri",
+    "MT": "Montana",
+    "NE": "Nebraska",
+    "NV": "Nevada",
+    "NH": "New Hampshire",
+    "NJ": "New Jersey",
+    "NM": "New Mexico",
+    "NY": "New York",
+    "NC": "North Carolina",
+    "ND": "North Dakota",
+    "OH": "Ohio",
+    "OK": "Oklahoma",
+    "OR": "Oregon",
+    "PA": "Pennsylvania",
+    "RI": "Rhode Island",
+    "SC": "South Carolina",
+    "SD": "South Dakota",
+    "TN": "Tennessee",
+    "TX": "Texas",
+    "UT": "Utah",
+    "VT": "Vermont",
+    "VA": "Virginia",
+    "WA": "Washington",
+    "WV": "West Virginia",
+    "WI": "Wisconsin",
+    "WY": "Wyoming",
+}
 
 
 def _sanitize_job_response(job: Job, *, include_rich_description: bool) -> JobResponse:
     payload = JobResponse.model_validate(job, from_attributes=True).model_dump()
+    payload["location"] = normalize_location(job.location_raw or job.location)
     payload["description"] = html_to_text(payload.get("description"))
     if include_rich_description:
         payload["description_html"] = _extract_description_html(job)
@@ -153,12 +214,46 @@ def _apply_job_sorting(
     return query.order_by(ordered.nulls_last(), Job.id.desc())
 
 
+def _sort_grouped_jobs(
+    jobs: list[Job],
+    *,
+    sort_by: str | None,
+    sort_direction: Literal["asc", "desc"],
+) -> list[Job]:
+    """Apply the same supported sort fields to the in-memory grouped results."""
+    sort_keys = {
+        "title": lambda job: job.title,
+        "location": lambda job: job.location,
+        "work_arrangement": lambda job: job.work_arrangement,
+        "source": lambda job: job.source,
+        "posted_date": lambda job: job.posted_date,
+        "closed_date": lambda job: job.closed_date,
+        "discovered_date": lambda job: job.discovered_date,
+        "overall_match_score": lambda job: job.overall_match_score,
+        "salary": lambda job: (
+            job.salary_max if job.salary_max is not None else job.salary_min
+        ),
+        "company_name": lambda job: job.company_name.casefold() if job.company_name else None,
+    }
+    key = sort_keys.get(sort_by or "")
+    if key is None:
+        key = sort_keys["overall_match_score"]
+        sort_direction = "desc"
+
+    jobs.sort(key=lambda job: job.id, reverse=True)
+    non_null = [job for job in jobs if key(job) is not None]
+    null = [job for job in jobs if key(job) is None]
+    non_null.sort(key=key, reverse=sort_direction == "desc")
+    return non_null + null
+
+
 @router.get("", response_model=JobListResponse)
 def list_jobs(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     min_score: float | None = Query(None, ge=0, le=100),
     location: str | None = None,
+    location_group: str | None = None,
     is_active: bool | None = Query(True),
     days: int | None = Query(None, description="Limit to jobs discovered in the last N days"),
     sort_by: str | None = Query(
@@ -209,6 +304,24 @@ def list_jobs(
     if days is not None:
         cutoff = date.today() - timedelta(days=days)
         query = query.filter(Job.discovered_date >= cutoff)
+
+    if location_group:
+        group_jobs = [
+            job
+            for job in query.all()
+            if location_group in location_group_keys(job.location_raw or job.location)
+        ]
+        total = len(group_jobs)
+        group_jobs = _sort_grouped_jobs(
+            group_jobs,
+            sort_by=sort_by,
+            sort_direction=sort_direction,
+        )
+        items = group_jobs[skip : skip + limit]
+        return JobListResponse(
+            total=total,
+            items=[_sanitize_job_response(item, include_rich_description=False) for item in items],
+        )
 
     total = query.count()
     sorted_query = _apply_job_sorting(
@@ -347,18 +460,28 @@ def unhide_job(job_id: int, db: Session = Depends(get_db)) -> dict[str, str]:
 def list_job_locations(
     is_active: bool | None = Query(True),
     db: Session = Depends(get_db),
-) -> list[str]:
-    """Return distinct non-empty locations for dropdown filtering."""
-    unknown_query = db.query(Job.id).filter((Job.location.is_(None)) | (Job.location == ""))
-    query = db.query(Job.location).filter(Job.location.is_not(None), Job.location != "")
+) -> list[dict[str, str]]:
+    """Return populated geographic groups for filtering."""
+    query = db.query(Job.location_raw, Job.location)
     if is_active is not None:
         query = query.filter(Job.is_active == is_active)
-        unknown_query = unknown_query.filter(Job.is_active == is_active)
-    rows = query.distinct().order_by(Job.location.asc()).all()
-    locations = [row[0] for row in rows]
-    if unknown_query.first() is not None:
-        locations.append("__unknown__")
-    return locations
+    query = query.filter(Job.passes_user_filters == True)  # noqa: E712
+    populated: set[str] = set()
+    for raw_location, normalized_location in query.all():
+        populated.update(location_group_keys(raw_location or normalized_location))
+
+    options = []
+    for value in ("nyc", "ny_state"):
+        if value in populated:
+            options.append({"value": value, "label": _LOCATION_GROUP_LABELS[value]})
+    for state_code, label in sorted(_US_STATE_LABELS.items(), key=lambda item: item[1]):
+        value = f"state:{state_code}"
+        if value in populated and state_code != "NY":
+            options.append({"value": value, "label": label})
+    for value in ("outside_us", "remote", "unknown"):
+        if value in populated:
+            options.append({"value": value, "label": _LOCATION_GROUP_LABELS[value]})
+    return options
 
 
 @router.put("/{job_id}/score")

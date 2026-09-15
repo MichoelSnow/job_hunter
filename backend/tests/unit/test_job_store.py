@@ -96,8 +96,17 @@ class TestUpsertJob:
         from app.models.job import Job
 
         job = db.query(Job).first()
-        assert job.location == "New York City, NY"
+        assert job.location == "NY, NY"
         assert job.location_raw == "New york city"
+
+    def test_uses_remote_for_remote_job_without_location(self, db):
+        upsert_job(db, _job(location=None, work_arrangement="remote"), company_id=None)
+        db.commit()
+        from app.models.job import Job
+
+        job = db.query(Job).first()
+        assert job.location == "Remote"
+        assert job.location_raw is None
 
     def test_backfills_normalized_locations(self, db):
         from app.models.job import Job
@@ -115,7 +124,7 @@ class TestUpsertJob:
         db.commit()
         assert backfill_normalized_locations(db) == 1
         job = db.query(Job).first()
-        assert job.location == "New York City, NY"
+        assert job.location == "NY, NY"
         assert job.location_raw == "New York City, New York"
 
     def test_updates_existing_job(self, db):

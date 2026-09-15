@@ -294,7 +294,77 @@ class TestJobsAPI:
         client, _ = client_with_job
         resp = client.get("/api/jobs/filters/locations")
         assert resp.status_code == 200
-        assert "Manhattan, NY" in resp.json()
+        assert {"value": "nyc", "label": "NYC"} in resp.json()
+
+    def test_location_group_filter_includes_nyc_boroughs(self, client, db_session):
+        for location in ("New York City, New York", "Brooklyn, NY", "Buffalo, NY"):
+            db_session.add(
+                Job(
+                    title=location,
+                    description="desc",
+                    location=location,
+                    application_url=f"https://example.com/{location}",
+                    source="manual",
+                    discovered_date=date(2026, 4, 1),
+                    passes_user_filters=True,
+                )
+            )
+        db_session.commit()
+
+        response = client.get("/api/jobs", params={"location_group": "nyc"})
+        assert response.status_code == 200
+        assert response.json()["total"] == 2
+
+    def test_location_group_filter_preserves_requested_sort(self, client, db_session):
+        for title, discovered_date in (
+            ("Older NYC role", date(2026, 4, 1)),
+            ("Newer NYC role", date(2026, 4, 2)),
+        ):
+            db_session.add(
+                Job(
+                    title=title,
+                    description="desc",
+                    location="New York City",
+                    application_url=f"https://example.com/{title}",
+                    source="manual",
+                    discovered_date=discovered_date,
+                    overall_match_score=100 if title.startswith("Older") else 0,
+                    passes_user_filters=True,
+                )
+            )
+        db_session.commit()
+
+        response = client.get(
+            "/api/jobs",
+            params={
+                "location_group": "nyc",
+                "sort_by": "discovered_date",
+                "sort_direction": "asc",
+            },
+        )
+        assert [item["title"] for item in response.json()["items"]] == [
+            "Older NYC role",
+            "Newer NYC role",
+        ]
+
+    def test_location_options_exclude_user_filtered_jobs(self, client, db_session):
+        db_session.add(
+            Job(
+                title="Filtered remote role",
+                description="desc",
+                location=None,
+                work_arrangement="remote",
+                application_url="https://example.com/filtered-remote",
+                source="manual",
+                discovered_date=date(2026, 4, 1),
+                passes_user_filters=False,
+            )
+        )
+        db_session.commit()
+
+        response = client.get("/api/jobs/filters/locations")
+        assert response.status_code == 200
+        assert {"value": "remote", "label": "Remote"} not in response.json()
 
     def test_list_jobs_excludes_user_filtered_jobs_for_all_status_views(self, client, db_session):
         visible = Job(
