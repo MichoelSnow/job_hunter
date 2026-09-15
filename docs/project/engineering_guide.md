@@ -69,11 +69,9 @@ poetry run ruff check .
 poetry run ruff format .
 ```
 
-Ruff currently selects the `E`, `F`, `I`, and `UP` rule families. The
-`E501`, `I001`, and `UP043` exclusions are intentional temporary exceptions
-for existing lint debt in this solo-project repository. They keep routine CI
-useful while avoiding a large unrelated cleanup; remove or narrow them after
-that cleanup is completed.
+Ruff selects the `E`, `F`, `I`, and `UP` rule families with no temporary
+exclusions. Keep new and modified backend code compliant with the configured
+line length, import ordering, and modern typing rules.
 
 From `frontend/`:
 

@@ -1,11 +1,16 @@
 """Scraper for companies using Ashby public posting API."""
+
 import logging
 import re
 from datetime import date
 from typing import Any
 from urllib.parse import urlparse
 
-from app.services.job_normalization import extract_salary_from_text, html_to_text, infer_work_arrangement
+from app.services.job_normalization import (
+    extract_salary_from_text,
+    html_to_text,
+    infer_work_arrangement,
+)
 from app.services.scraper.base import BaseJobScraper
 
 logger = logging.getLogger(__name__)
@@ -38,7 +43,9 @@ class AshbyScraper(BaseJobScraper):
         data = response.json()
         jobs = data.get("jobs")
         if not isinstance(jobs, list):
-            logger.warning("AshbyScraper: unexpected response shape for %s", self.company.get("name"))
+            logger.warning(
+                "AshbyScraper: unexpected response shape for %s", self.company.get("name")
+            )
             return []
         return jobs
 
@@ -122,9 +129,8 @@ def _extract_job_id(raw: dict[str, Any], job_url: str, apply_url: str) -> str:
 def _extract_salary(raw: dict[str, Any]) -> tuple[int | None, int | None, str | None, str | None]:
     compensation = raw.get("compensation")
     if isinstance(compensation, dict):
-        summary = (
-            compensation.get("scrapeableCompensationSalarySummary")
-            or compensation.get("compensationTierSummary")
+        summary = compensation.get("scrapeableCompensationSalarySummary") or compensation.get(
+            "compensationTierSummary"
         )
         parsed = extract_salary_from_text(summary)
         if parsed[0] is not None or parsed[1] is not None:

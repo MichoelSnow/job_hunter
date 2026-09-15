@@ -1,4 +1,5 @@
 """Upsert logic for persisting normalized job dicts to the database."""
+
 import logging
 from datetime import date
 from typing import Any
@@ -151,27 +152,33 @@ def store_job_requirements(db: Session, job_id: int, parsed: dict[str, Any]) -> 
     db.query(JobRequirement).filter(JobRequirement.job_id == job_id).delete()
 
     for skill in parsed.get("required_skills", []):
-        db.add(JobRequirement(
-            job_id=job_id,
-            requirement_type="skill",
-            requirement_value=skill,
-            is_required=True,
-        ))
+        db.add(
+            JobRequirement(
+                job_id=job_id,
+                requirement_type="skill",
+                requirement_value=skill,
+                is_required=True,
+            )
+        )
     for skill in parsed.get("preferred_skills", []):
-        db.add(JobRequirement(
-            job_id=job_id,
-            requirement_type="skill",
-            requirement_value=skill,
-            is_required=False,
-        ))
+        db.add(
+            JobRequirement(
+                job_id=job_id,
+                requirement_type="skill",
+                requirement_value=skill,
+                is_required=False,
+            )
+        )
     years = parsed.get("experience_required")
     if years is not None:
-        db.add(JobRequirement(
-            job_id=job_id,
-            requirement_type="experience",
-            requirement_value=str(years),
-            is_required=True,
-        ))
+        db.add(
+            JobRequirement(
+                job_id=job_id,
+                requirement_type="experience",
+                requirement_value=str(years),
+                is_required=True,
+            )
+        )
 
 
 def parse_and_store_requirements(db: Session, job_dicts: list[dict[str, Any]]) -> None:
@@ -198,9 +205,7 @@ def parse_and_store_requirements(db: Session, job_dicts: list[dict[str, Any]]) -
     logger.info("Parsed and stored requirements for %d jobs", len(job_dicts))
 
 
-def bulk_upsert_jobs(
-    db: Session, jobs: list[dict[str, Any]]
-) -> tuple[int, int]:
+def bulk_upsert_jobs(db: Session, jobs: list[dict[str, Any]]) -> tuple[int, int]:
     """
     Upsert a list of normalized job dicts.
     Resolves company FK for each job, then upserts the job row.
@@ -236,15 +241,13 @@ def bulk_upsert_jobs(
 def backfill_missing_salaries(db: Session) -> int:
     """Fill missing salary fields from descriptions already stored in the database."""
     updated = 0
-    jobs = (
-        db.query(Job)
-        .filter((Job.salary_min.is_(None)) | (Job.salary_max.is_(None)))
-        .all()
-    )
+    jobs = db.query(Job).filter((Job.salary_min.is_(None)) | (Job.salary_max.is_(None))).all()
 
     for job in jobs:
         stored_text = _stored_job_text(job)
-        salary_min, salary_max, salary_period, salary_currency = extract_salary_from_text(stored_text)
+        salary_min, salary_max, salary_period, salary_currency = extract_salary_from_text(
+            stored_text
+        )
         if salary_min is None and salary_max is None:
             continue
 

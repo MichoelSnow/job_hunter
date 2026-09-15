@@ -10,14 +10,26 @@ from app.db.session import get_db
 from app.models.company import Company
 from app.models.job import Job, JobLocation
 from app.schemas.job import JobListResponse, JobResponse
-from app.services.job_normalization import html_to_text, normalize_location, sanitize_description_html
+from app.services.job_normalization import (
+    html_to_text,
+    normalize_location,
+    sanitize_description_html,
+)
 from app.services.scoring_engine import ScoringEngine
 from app.services.user_settings import get_or_create_user_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["jobs"])
 
-_NYC_CITIES = ("New York", "New York City", "Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island")
+_NYC_CITIES = (
+    "New York",
+    "New York City",
+    "Manhattan",
+    "Brooklyn",
+    "Queens",
+    "Bronx",
+    "Staten Island",
+)
 
 
 def _sanitize_job_response(job: Job, *, include_rich_description: bool) -> JobResponse:
@@ -177,7 +189,10 @@ def list_jobs(
                 "new york city, ny",
             }:
                 query = query.filter(Job.locations.any(JobLocation.city.in_(_NYC_CITIES)))
-            elif input_location in {"new york state", "ny"} or normalized_location == "new york state":
+            elif (
+                input_location in {"new york state", "ny"}
+                or normalized_location == "new york state"
+            ):
                 query = query.filter(Job.locations.any(JobLocation.state == "NY"))
             elif normalized_location in {"united states", "usa", "us"}:
                 query = query.filter(Job.locations.any(JobLocation.country == "United States"))

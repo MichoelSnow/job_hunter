@@ -1,5 +1,4 @@
 import pytest
-
 from app.services.job_normalization import (
     extract_salary_from_text,
     html_to_text,
@@ -27,6 +26,7 @@ class TestInferWorkArrangement:
             is_remote=None,
         )
         assert value == "hybrid"
+
     def test_in_office_signal_from_description(self):
         value = infer_work_arrangement(
             title="Head of Data",
@@ -116,7 +116,9 @@ class TestSanitizeDescriptionHtml:
 
 class TestExtractSalaryFromText:
     def test_extracts_yearly_range_with_hyphen(self):
-        values = extract_salary_from_text("The base pay for this role is: $149,040 - $195,615 per year.")
+        values = extract_salary_from_text(
+            "The base pay for this role is: $149,040 - $195,615 per year."
+        )
         assert values == (149040, 195615, "year", "USD")
 
     def test_extracts_yearly_range_with_implied_base_salary_period(self):
@@ -134,7 +136,8 @@ class TestExtractSalaryFromText:
 
     def test_extracts_range_with_to_connector(self):
         values = extract_salary_from_text(
-            "The target base salary for this position ranges from $170,000 to $200,000, in addition "
+            "The target base salary for this position ranges from $170,000 to $200,000, "
+            "in addition "
             "to a competitive equity and benefits package."
         )
         assert values == (170000, 200000, "year", "USD")

@@ -1,5 +1,4 @@
 import pytest
-
 from app.services.job_filter import JobFilter, parse_boolean_query
 
 
@@ -7,7 +6,10 @@ from app.services.job_filter import JobFilter, parse_boolean_query
 def job_filter() -> JobFilter:
     return JobFilter(
         allowed_location_query='"new york" OR brooklyn OR manhattan',
-        title_query='director OR vp OR "vice president" OR "head of" OR chief OR lead OR manager OR principal',
+        title_query=(
+            'director OR vp OR "vice president" OR "head of" OR chief OR lead OR '
+            "manager OR principal"
+        ),
     )
 
 
@@ -84,7 +86,7 @@ class TestRoleLevelFilter:
 
     def test_supports_boolean_groups(self):
         grouped = JobFilter(
-            title_query='(director OR vp) AND (data OR analytics)',
+            title_query="(director OR vp) AND (data OR analytics)",
             allowed_location_query='"new york"',
         )
         assert grouped._passes_role_level(_make_job(title="VP, Data Platforms"))
@@ -92,7 +94,7 @@ class TestRoleLevelFilter:
 
     def test_supports_not_operator(self):
         with_not = JobFilter(
-            title_query='director AND NOT intern',
+            title_query="director AND NOT intern",
             allowed_location_query='"new york"',
         )
         assert with_not._passes_role_level(_make_job(title="Director of Data"))
@@ -135,4 +137,4 @@ class TestSalaryFilter:
 class TestBooleanQueryParser:
     def test_invalid_query_raises(self):
         with pytest.raises(ValueError):
-            parse_boolean_query('(director OR')
+            parse_boolean_query("(director OR")

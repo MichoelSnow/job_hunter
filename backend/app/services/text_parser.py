@@ -1,4 +1,5 @@
 """Resume and job description parsing using spaCy NER and keyword matching."""
+
 import json
 import logging
 import re
@@ -33,11 +34,23 @@ _TITLE_CLEANUP_PARENS_RE = re.compile(
 _TITLE_PREFIX_RE = re.compile(r"^\s*[-*#\d\.\)\s]+")
 
 _REQUIRED_SIGNALS = [
-    "required", "must have", "must-have", "mandatory", "essential", "necessary",
+    "required",
+    "must have",
+    "must-have",
+    "mandatory",
+    "essential",
+    "necessary",
 ]
 _PREFERRED_SIGNALS = [
-    "preferred", "nice to have", "nice-to-have", "bonus", "a plus", "desired",
-    "ideally", "a bonus", "would be a plus",
+    "preferred",
+    "nice to have",
+    "nice-to-have",
+    "bonus",
+    "a plus",
+    "desired",
+    "ideally",
+    "a bonus",
+    "would be a plus",
 ]
 
 

@@ -14,11 +14,12 @@ Company metadata (in companies table):
     "workday_instance": "wd5"   // defaults to "wd1" if omitted
   }
 """
+
 import logging
 import re
 from datetime import date
 from typing import Any
-from urllib.parse import urlparse, unquote
+from urllib.parse import unquote, urlparse
 
 import requests
 
@@ -28,7 +29,9 @@ from app.services.scraper.base import BaseJobScraper
 logger = logging.getLogger(__name__)
 
 _PAGE_SIZE = 20
-_MYWORKDAY_HOST_RE = re.compile(r"^(?P<tenant>[a-z0-9-]+)\.(?P<instance>wd\d+)\.myworkdayjobs\.com$", re.IGNORECASE)
+_MYWORKDAY_HOST_RE = re.compile(
+    r"^(?P<tenant>[a-z0-9-]+)\.(?P<instance>wd\d+)\.myworkdayjobs\.com$", re.IGNORECASE
+)
 _CXS_URL_RE = re.compile(
     r"https://(?P<host>[a-z0-9.-]+?\.myworkdayjobs\.com)/wday/cxs/(?P<tenant>[^/]+)/(?P<board>[^/]+)/jobs",
     re.IGNORECASE,
@@ -105,12 +108,16 @@ class WorkdayScraper(BaseJobScraper):
         # bulletFields[0] is the job requisition ID when present
         bullet_fields = raw.get("bulletFields") or []
         req_id = bullet_fields[0] if bullet_fields else ""
-        external_id = f"wd_{tenant}_{req_id}" if req_id else f"wd_{tenant}_{external_path.split('_')[-1]}"
+        external_id = (
+            f"wd_{tenant}_{req_id}" if req_id else f"wd_{tenant}_{external_path.split('_')[-1]}"
+        )
 
         title = raw.get("title") or ""
         location = raw.get("locationsText", "")
         salary_text = " ".join(str(item) for item in bullet_fields if item)
-        salary_min, salary_max, salary_period, salary_currency = extract_salary_from_text(salary_text)
+        salary_min, salary_max, salary_period, salary_currency = extract_salary_from_text(
+            salary_text
+        )
         return {
             "external_id": external_id,
             "title": title,
@@ -153,7 +160,9 @@ class WorkdayScraper(BaseJobScraper):
             if final_url:
                 headers["Referer"] = final_url
         except requests.RequestException as exc:
-            logger.warning("WorkdayScraper: failed seeding session for %s: %s", self.company.get("name"), exc)
+            logger.warning(
+                "WorkdayScraper: failed seeding session for %s: %s", self.company.get("name"), exc
+            )
 
         csrf_token = self.session.cookies.get("CALYPSO_CSRF_TOKEN", "")
         if csrf_token:
@@ -185,7 +194,8 @@ class WorkdayScraper(BaseJobScraper):
             if response.status_code in (400, 404) and not board_success:
                 snippet = (response.text or "").strip().replace("\n", " ")[:220]
                 logger.warning(
-                    "WorkdayScraper: board candidate failed for %s: board=%s url=%s status=%s body=%r",
+                    "WorkdayScraper: board candidate failed for %s: board=%s "
+                    "url=%s status=%s body=%r",
                     self.company.get("name"),
                     board,
                     url,
@@ -227,7 +237,12 @@ def _extract_board_from_url(url: str) -> str | None:
 
 def _candidate_boards(configured: str, inferred: str | None) -> list[str]:
     candidates: list[str] = []
-    for value in (configured, configured.replace("_", ""), inferred, (inferred or "").replace("_", "")):
+    for value in (
+        configured,
+        configured.replace("_", ""),
+        inferred,
+        (inferred or "").replace("_", ""),
+    ):
         if value and value not in candidates:
             candidates.append(value)
     return candidates
@@ -266,7 +281,8 @@ def _discover_workday_endpoint(
 
     base_url, tenant, board, instance = endpoint
     logger.info(
-        "WorkdayScraper: discovered endpoint from careers page for %s: tenant=%s board=%s instance=%s",
+        "WorkdayScraper: discovered endpoint from careers page for %s: "
+        "tenant=%s board=%s instance=%s",
         careers_url,
         tenant,
         board,

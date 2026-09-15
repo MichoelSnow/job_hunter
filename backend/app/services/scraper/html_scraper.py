@@ -11,6 +11,7 @@
 
 `careers_url` is the page to scrape. If selectors are missing, scraper skips.
 """
+
 import logging
 from datetime import date
 from typing import Any
@@ -68,6 +69,7 @@ class HtmlScraper(BaseJobScraper):
             # Resolve relative URLs
             if href and not href.startswith("http"):
                 from urllib.parse import urljoin
+
                 href = urljoin(url, href)
 
             if not title:
@@ -85,15 +87,19 @@ class HtmlScraper(BaseJobScraper):
         return results
 
     def normalize(self, raw: dict[str, Any]) -> dict[str, Any]:
-        # Generate a stable external_id from company name + title + url since there is no API-provided ID
+        # Generate a stable external_id from company name + title + url since there is
+        # no API-provided ID.
         import hashlib
+
         company_name = self.company.get("name", "")
         id_src = f"{company_name}::{raw.get('title', '')}::{raw.get('url', '')}"
         short_hash = hashlib.md5(id_src.encode()).hexdigest()[:12]
 
         title = raw.get("title", "")
         location = raw.get("location", "")
-        salary_min, salary_max, salary_period, salary_currency = extract_salary_from_text(raw.get("text"))
+        salary_min, salary_max, salary_period, salary_currency = extract_salary_from_text(
+            raw.get("text")
+        )
         return {
             "external_id": f"html_{short_hash}",
             "title": title,

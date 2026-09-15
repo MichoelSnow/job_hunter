@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import Date, DateTime, ForeignKey, JSON, String, Text, func
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -27,9 +27,7 @@ class Application(Base):
     resume_version: Mapped[str | None] = mapped_column(String(255))
     metadata_: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=func.now(), onupdate=func.now()
-    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
     job: Mapped[Job] = relationship("Job", back_populates="application")
     status_history: Mapped[list[ApplicationStatusHistory]] = relationship(
@@ -49,6 +47,4 @@ class ApplicationStatusHistory(Base):
     changed_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
     notes: Mapped[str | None] = mapped_column(Text)
 
-    application: Mapped[Application] = relationship(
-        "Application", back_populates="status_history"
-    )
+    application: Mapped[Application] = relationship("Application", back_populates="status_history")

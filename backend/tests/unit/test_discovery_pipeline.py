@@ -7,24 +7,24 @@ real in-memory SQLite DB built from the ORM models.
 These tests exist specifically to catch schema drift between ORM models and the
 DB, and to verify the pipeline wiring is correct end-to-end.
 """
+
 from datetime import date
 from unittest.mock import MagicMock, patch
 
+import app.models  # noqa: F401 — register all ORM models
 import pytest
 import requests
+from app.db.base import Base
+from app.models.company import Company
+from app.models.job import Job
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-import app.models  # noqa: F401 — register all ORM models
-from app.db.base import Base
-from app.models.company import Company
-from app.models.job import Job
-
-
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
 
 @pytest.fixture
 def db_session():
@@ -46,7 +46,9 @@ def _fake_jsearch_response(n: int = 3) -> dict:
             {
                 "job_id": f"js_{i}",
                 "job_title": f"Director of Data {i}",
-                "job_description": "Lead our data team in Manhattan. Python required. 5+ years experience.",
+                "job_description": (
+                    "Lead our data team in Manhattan. Python required. 5+ years experience."
+                ),
                 "job_city": "New York",
                 "job_state": "NY",
                 "job_is_remote": False,
@@ -115,6 +117,7 @@ def _jsearch_job(
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _mock_http_response(json_data: dict, status_code: int = 200) -> MagicMock:
     resp = MagicMock()
     resp.status_code = status_code
@@ -126,6 +129,7 @@ def _mock_http_response(json_data: dict, status_code: int = 200) -> MagicMock:
 # ---------------------------------------------------------------------------
 # Schema smoke test
 # ---------------------------------------------------------------------------
+
 
 class TestSchemaIntegrity:
     """Verify the ORM models match what Base.metadata creates.
@@ -143,7 +147,7 @@ class TestSchemaIntegrity:
         db_session.refresh(company)
         assert company.id is not None
         assert company.scraper_enabled is True  # default
-        assert company.is_priority is False     # default
+        assert company.is_priority is False  # default
 
     def test_job_table_creation(self, db_session):
         """Job table creates cleanly."""
@@ -162,6 +166,7 @@ class TestSchemaIntegrity:
 # ---------------------------------------------------------------------------
 # Pipeline smoke tests
 # ---------------------------------------------------------------------------
+
 
 class TestDiscoveryPipeline:
     """Full end-to-end pipeline tests calling run_job_discovery() directly.
@@ -196,11 +201,12 @@ class TestDiscoveryPipeline:
         # Prevent run_job_discovery from closing our test session
         db_session.close = lambda: None
 
-        with patch("app.services.api_aggregator.settings") as mock_settings, \
-             patch("app.db.session.SessionLocal", return_value=db_session), \
-             patch("requests.Session.get", side_effect=dispatch_get), \
-             patch("requests.Session.post", return_value=workday_resp):
-
+        with (
+            patch("app.services.api_aggregator.settings") as mock_settings,
+            patch("app.db.session.SessionLocal", return_value=db_session),
+            patch("requests.Session.get", side_effect=dispatch_get),
+            patch("requests.Session.post", return_value=workday_resp),
+        ):
             mock_settings.jsearchapi_key = "fake_key"
             mock_settings.serplyapi_key = "fake_key"
             mock_settings.jsearch_num_pages = 1
@@ -224,6 +230,7 @@ class TestDiscoveryPipeline:
 
     def test_second_run_updates_not_inserts(self, db_session):
         from app.services.api_aggregator import discovery_status
+
         self._run_discovery(db_session)
         first_count = db_session.query(Job).count()
         self._run_discovery(db_session)
@@ -322,6 +329,7 @@ class TestDiscoveryPipeline:
     def test_requirements_parsed_and_stored(self, db_session):
         """parse_and_store_requirements runs and stores JobRequirement rows."""
         from app.models.job import JobRequirement
+
         self._run_discovery(db_session)
         # At least some jobs should have requirements parsed from their descriptions
         req_count = db_session.query(JobRequirement).count()
@@ -330,6 +338,7 @@ class TestDiscoveryPipeline:
     def test_discovery_status_reflects_run(self, db_session):
         """discovery_status is updated correctly after a successful run."""
         from app.services.api_aggregator import discovery_status
+
         self._run_discovery(db_session)
         assert discovery_status["status"] == "complete"
         assert discovery_status["mode"] == "full"
@@ -456,7 +465,10 @@ class TestCompanyScrape:
         assert all(j["company_name"] == "Test Co" for j in jobs)
         assert all(
             j["description"]
-            == "Hybrid role. Python required. The base pay for this role is: $149,040 - $195,615 per year."
+            == (
+                "Hybrid role. Python required. The base pay for this role is: "
+                "$149,040 - $195,615 per year."
+            )
             for j in jobs
         )
         assert all(j["work_arrangement"] == "hybrid" for j in jobs)
@@ -573,8 +585,10 @@ class TestCompanyScrape:
         csrf_resp = _mock_http_response({})
         csrf_resp.cookies = {"CALYPSO_CSRF_TOKEN": "fake-csrf"}
 
-        with patch("requests.Session.get", return_value=csrf_resp), \
-             patch("requests.Session.post") as mock_post:
+        with (
+            patch("requests.Session.get", return_value=csrf_resp),
+            patch("requests.Session.post") as mock_post,
+        ):
             mock_post.side_effect = [
                 _mock_http_response(page1),
                 _mock_http_response(page2),
@@ -608,8 +622,10 @@ class TestCompanyScrape:
         bad = _mock_http_response({}, status_code=400)
         good = _mock_http_response({"total": 0, "jobPostings": []})
 
-        with patch("requests.Session.get", return_value=csrf_resp), \
-             patch("requests.Session.post") as mock_post:
+        with (
+            patch("requests.Session.get", return_value=csrf_resp),
+            patch("requests.Session.post") as mock_post,
+        ):
             mock_post.side_effect = [bad, good]
             jobs = scraper.fetch_jobs()
 
@@ -638,13 +654,17 @@ class TestCompanyScrape:
         )
         jobs_resp = _mock_http_response({"total": 0, "jobPostings": []})
 
-        with patch("requests.Session.get", return_value=landing), \
-             patch("requests.Session.post", return_value=jobs_resp) as mock_post:
+        with (
+            patch("requests.Session.get", return_value=landing),
+            patch("requests.Session.post", return_value=jobs_resp) as mock_post,
+        ):
             jobs = scraper.fetch_jobs()
 
         assert jobs == []
         called_url = mock_post.call_args.args[0]
-        assert called_url == "https://tempus.wd5.myworkdayjobs.com/wday/cxs/tempus/TempusCareers/jobs"
+        assert (
+            called_url == "https://tempus.wd5.myworkdayjobs.com/wday/cxs/tempus/TempusCareers/jobs"
+        )
 
     def test_workday_scraper_logs_body_snippet_on_board_failure(self):
         from app.services.scraper.workday import WorkdayScraper
@@ -665,8 +685,10 @@ class TestCompanyScrape:
         failure = _mock_http_response({"error": "bad request"}, status_code=400)
         failure.text = "bad request from workday"
 
-        with patch("requests.Session.get", return_value=landing), \
-             patch("requests.Session.post", return_value=failure):
+        with (
+            patch("requests.Session.get", return_value=landing),
+            patch("requests.Session.post", return_value=failure),
+        ):
             jobs = scraper.fetch_jobs()
 
         assert jobs == []
@@ -689,8 +711,7 @@ class TestCompanyScrape:
                     "descriptionHtml": "<p><strong>Lead billing operations.</strong></p>",
                     "publishedAt": "2026-03-25T12:00:00.000+00:00",
                     "jobUrl": (
-                        "https://jobs.ashbyhq.com/allarahealth/"
-                        "c162a840-f144-40d6-bc8e-ce643a998ba5"
+                        "https://jobs.ashbyhq.com/allarahealth/c162a840-f144-40d6-bc8e-ce643a998ba5"
                     ),
                     "applyUrl": (
                         "https://jobs.ashbyhq.com/allarahealth/"
@@ -851,7 +872,9 @@ class TestCompanyScrape:
 
         db_session.add_all(
             [
-                Company(name="Good GH", ats_type="greenhouse", ats_id="goodgh", scraper_enabled=True),
+                Company(
+                    name="Good GH", ats_type="greenhouse", ats_id="goodgh", scraper_enabled=True
+                ),
                 Company(name="Bad GH", ats_type="greenhouse", ats_id=None, scraper_enabled=True),
                 Company(
                     name="Good HTML",
@@ -881,7 +904,9 @@ class TestCompanyScrape:
         from app.models.company import Company
         from app.services.api_aggregator import run_company_scrape
 
-        company = Company(name="Scrape OK", ats_type="lever", ats_id="scrape-ok", scraper_enabled=True)
+        company = Company(
+            name="Scrape OK", ats_type="lever", ats_id="scrape-ok", scraper_enabled=True
+        )
         db_session.add(company)
         db_session.commit()
 
@@ -894,9 +919,14 @@ class TestCompanyScrape:
                 return []
 
         db_session.close = lambda: None
-        with patch("app.db.session.SessionLocal", return_value=db_session), \
-             patch("app.services.api_aggregator.get_scrape_targets", return_value=([{"id": company.id, "name": company.name, "ats_type": "lever"}], [])), \
-             patch("app.services.scraper.get_scraper", return_value=_SuccessScraper()):
+        with (
+            patch("app.db.session.SessionLocal", return_value=db_session),
+            patch(
+                "app.services.api_aggregator.get_scrape_targets",
+                return_value=([{"id": company.id, "name": company.name, "ats_type": "lever"}], []),
+            ),
+            patch("app.services.scraper.get_scraper", return_value=_SuccessScraper()),
+        ):
             run_company_scrape()
 
         db_session.expire_all()
@@ -910,7 +940,9 @@ class TestCompanyScrape:
         from app.models.company import Company
         from app.services.api_aggregator import run_company_scrape
 
-        company = Company(name="Scrape Fail", ats_type="lever", ats_id="scrape-fail", scraper_enabled=True)
+        company = Company(
+            name="Scrape Fail", ats_type="lever", ats_id="scrape-fail", scraper_enabled=True
+        )
         db_session.add(company)
         db_session.commit()
 
@@ -923,9 +955,14 @@ class TestCompanyScrape:
                 return []
 
         db_session.close = lambda: None
-        with patch("app.db.session.SessionLocal", return_value=db_session), \
-             patch("app.services.api_aggregator.get_scrape_targets", return_value=([{"id": company.id, "name": company.name, "ats_type": "lever"}], [])), \
-             patch("app.services.scraper.get_scraper", return_value=_FailScraper()):
+        with (
+            patch("app.db.session.SessionLocal", return_value=db_session),
+            patch(
+                "app.services.api_aggregator.get_scrape_targets",
+                return_value=([{"id": company.id, "name": company.name, "ats_type": "lever"}], []),
+            ),
+            patch("app.services.scraper.get_scraper", return_value=_FailScraper()),
+        ):
             run_company_scrape()
 
         db_session.expire_all()
@@ -938,6 +975,7 @@ class TestCompanyScrape:
     def test_skill_taxonomy_path_resolves(self):
         """Regression: TAXONOMY_PATH used parents[4] (wrong) instead of parents[3]."""
         from app.services.text_parser import TAXONOMY_PATH
+
         assert TAXONOMY_PATH.exists(), (
             f"skill_taxonomy.json not found at {TAXONOMY_PATH} — check parents[N] in text_parser.py"
         )
@@ -945,8 +983,10 @@ class TestCompanyScrape:
     def test_user_profile_path_resolves(self):
         """Regression: USER_PROFILE_PATH used parents[4] (wrong) instead of parents[3]."""
         from app.services.text_parser import USER_PROFILE_PATH
+
         assert USER_PROFILE_PATH.exists(), (
-            f"user_profile.yaml not found at {USER_PROFILE_PATH} — check parents[N] in text_parser.py"
+            f"user_profile.yaml not found at {USER_PROFILE_PATH} — "
+            "check parents[N] in text_parser.py"
         )
 
     def test_parse_requirements_runs_after_upsert(self, db_session):

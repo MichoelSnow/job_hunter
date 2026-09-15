@@ -25,7 +25,17 @@ _ALLOWED_HTML_TAGS = {
     "blockquote",
     "a",
 }
-_DROP_HTML_TAGS = {"script", "style", "iframe", "object", "embed", "form", "svg", "math", "noscript"}
+_DROP_HTML_TAGS = {
+    "script",
+    "style",
+    "iframe",
+    "object",
+    "embed",
+    "form",
+    "svg",
+    "math",
+    "noscript",
+}
 _ALLOWED_LINK_PROTOCOLS = ("http://", "https://", "mailto:")
 _SALARY_RANGE_RE = re.compile(
     r"(?P<min_prefix>\$|USD\s*\$?)?\s*(?P<min>\d[\d,]*(?:\.\d{1,2})?)\s*"
@@ -39,24 +49,60 @@ _SALARY_SINGLE_RE = re.compile(
     re.IGNORECASE,
 )
 
-_LOCATION_PLACEHOLDER_RE = re.compile(
-    r"^(?:none|null|n/?a|unknown|not specified|)$", re.IGNORECASE
-)
+_LOCATION_PLACEHOLDER_RE = re.compile(r"^(?:none|null|n/?a|unknown|not specified|)$", re.IGNORECASE)
 _LOCATION_SPLIT_RE = re.compile(r"\s*(?:\bor\b|\band\b|[;|])\s*", re.IGNORECASE)
 _US_STATES = {
-    "alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR",
-    "california": "CA", "colorado": "CO", "connecticut": "CT", "delaware": "DE",
-    "florida": "FL", "georgia": "GA", "hawaii": "HI", "idaho": "ID",
-    "illinois": "IL", "indiana": "IN", "iowa": "IA", "kansas": "KS",
-    "kentucky": "KY", "louisiana": "LA", "maine": "ME", "maryland": "MD",
-    "massachusetts": "MA", "michigan": "MI", "minnesota": "MN", "mississippi": "MS",
-    "missouri": "MO", "montana": "MT", "nebraska": "NE", "nevada": "NV",
-    "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM", "new york": "NY",
-    "north carolina": "NC", "north dakota": "ND", "ohio": "OH", "oklahoma": "OK",
-    "oregon": "OR", "pennsylvania": "PA", "rhode island": "RI", "south carolina": "SC",
-    "south dakota": "SD", "tennessee": "TN", "texas": "TX", "utah": "UT",
-    "vermont": "VT", "virginia": "VA", "washington": "WA", "west virginia": "WV",
-    "wisconsin": "WI", "wyoming": "WY", "district of columbia": "DC",
+    "alabama": "AL",
+    "alaska": "AK",
+    "arizona": "AZ",
+    "arkansas": "AR",
+    "california": "CA",
+    "colorado": "CO",
+    "connecticut": "CT",
+    "delaware": "DE",
+    "florida": "FL",
+    "georgia": "GA",
+    "hawaii": "HI",
+    "idaho": "ID",
+    "illinois": "IL",
+    "indiana": "IN",
+    "iowa": "IA",
+    "kansas": "KS",
+    "kentucky": "KY",
+    "louisiana": "LA",
+    "maine": "ME",
+    "maryland": "MD",
+    "massachusetts": "MA",
+    "michigan": "MI",
+    "minnesota": "MN",
+    "mississippi": "MS",
+    "missouri": "MO",
+    "montana": "MT",
+    "nebraska": "NE",
+    "nevada": "NV",
+    "new hampshire": "NH",
+    "new jersey": "NJ",
+    "new mexico": "NM",
+    "new york": "NY",
+    "north carolina": "NC",
+    "north dakota": "ND",
+    "ohio": "OH",
+    "oklahoma": "OK",
+    "oregon": "OR",
+    "pennsylvania": "PA",
+    "rhode island": "RI",
+    "south carolina": "SC",
+    "south dakota": "SD",
+    "tennessee": "TN",
+    "texas": "TX",
+    "utah": "UT",
+    "vermont": "VT",
+    "virginia": "VA",
+    "washington": "WA",
+    "west virginia": "WV",
+    "wisconsin": "WI",
+    "wyoming": "WY",
+    "district of columbia": "DC",
 }
 _US_STATE_CODES = set(_US_STATES.values())
 _NYC_ALIASES = {
@@ -99,8 +145,15 @@ def normalize_location(value: str | None) -> str | None:
     if not text or _LOCATION_PLACEHOLDER_RE.fullmatch(text):
         return None
 
-    text = re.sub(r"^\s*(?:remote|hybrid|on[- ]?site|in[- ]?office)\s*[-:;,]?\s*", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"\s*\((?:remote|hybrid|on[- ]?site|in[- ]?office)\)\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"^\s*(?:remote|hybrid|on[- ]?site|in[- ]?office)\s*[-:;,]?\s*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"\s*\((?:remote|hybrid|on[- ]?site|in[- ]?office)\)\s*", "", text, flags=re.IGNORECASE
+    )
     text = re.sub(
         r"\s+(?:hybrid|remote|on[- ]?site|in[- ]?office)(?:\s+optional)?\s*$",
         "",
@@ -135,7 +188,9 @@ def parse_locations(value: str | None) -> list[dict[str, str | None]]:
     for item in display.split("; "):
         parts = [part.strip() for part in item.split(",")]
         if len(parts) == 1 and parts[0] == "United States":
-            records.append({"city": None, "state": None, "country": "United States", "display_name": item})
+            records.append(
+                {"city": None, "state": None, "country": "United States", "display_name": item}
+            )
             continue
         city = parts[0] or None
         state = parts[1] if len(parts) > 1 else None
@@ -195,9 +250,7 @@ def infer_work_arrangement(
 ) -> str:
     """Infer work arrangement from available text signals."""
     text = " ".join(
-        part.strip().lower()
-        for part in (title or "", location or "", description or "")
-        if part
+        part.strip().lower() for part in (title or "", location or "", description or "") if part
     )
 
     if is_remote is True:
@@ -269,7 +322,9 @@ def _unescape_html(value: str) -> str:
     return text
 
 
-def extract_salary_from_text(text: str | None) -> tuple[int | None, int | None, str | None, str | None]:
+def extract_salary_from_text(
+    text: str | None,
+) -> tuple[int | None, int | None, str | None, str | None]:
     """
     Extract salary range from free-form text.
     Returns (salary_min, salary_max, salary_period, salary_currency).
@@ -289,7 +344,9 @@ def extract_salary_from_text(text: str | None) -> tuple[int | None, int | None, 
         window_start = max(0, match.start() - 12)
         window_end = min(len(clean_text), match.end() + 12)
         window = clean_text[window_start:window_end].lower()
-        has_currency = bool(match.group("min_prefix") or match.group("max_prefix") or "usd" in window)
+        has_currency = bool(
+            match.group("min_prefix") or match.group("max_prefix") or "usd" in window
+        )
         if not has_currency:
             continue
 
@@ -324,7 +381,9 @@ def _parse_salary_number(raw_value: str | None) -> float | None:
 
 
 def _infer_salary_period(text_lower: str) -> str | None:
-    if any(signal in text_lower for signal in ("per hour", "/hour", "hourly", "an hour", "each hour")):
+    if any(
+        signal in text_lower for signal in ("per hour", "/hour", "hourly", "an hour", "each hour")
+    ):
         return "hour"
     if any(signal in text_lower for signal in ("per week", "/week", "weekly")):
         return "week"

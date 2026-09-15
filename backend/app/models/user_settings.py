@@ -18,7 +18,9 @@ class UserSettings(Base):
     filter_title_query: Mapped[str] = mapped_column(nullable=False, default="")
     filter_exclude_remote: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     filter_target_salary: Mapped[int | None] = mapped_column(Integer)
-    filter_include_missing_salary: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    filter_include_missing_salary: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False
+    )
     matching_skills: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     matching_experience_years: Mapped[int | None] = mapped_column(Integer)
     matching_current_title: Mapped[str | None] = mapped_column(String(255))

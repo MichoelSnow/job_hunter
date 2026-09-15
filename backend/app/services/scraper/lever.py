@@ -1,4 +1,5 @@
 """Scraper for companies using the Lever ATS (public postings API)."""
+
 import html
 import logging
 from datetime import date
@@ -7,7 +8,11 @@ from typing import Any
 import requests
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
-from app.services.job_normalization import extract_salary_from_text, html_to_text, infer_work_arrangement
+from app.services.job_normalization import (
+    extract_salary_from_text,
+    html_to_text,
+    infer_work_arrangement,
+)
 from app.services.scraper.base import BaseJobScraper
 
 logger = logging.getLogger(__name__)
@@ -41,7 +46,9 @@ class LeverScraper(BaseJobScraper):
         description = _compose_description_text(raw)
         description_html = _compose_description_html(raw)
         location = categories.get("location", "")
-        salary_min, salary_max, salary_period, salary_currency = extract_salary_from_text(description)
+        salary_min, salary_max, salary_period, salary_currency = extract_salary_from_text(
+            description
+        )
         normalized_raw = dict(raw)
         normalized_raw["normalized_description_html"] = description_html
         hosted_url = raw.get("hostedUrl") or ""
