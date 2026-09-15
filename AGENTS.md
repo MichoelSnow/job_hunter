@@ -2,6 +2,32 @@
 
 This file is the canonical operating guide for this repository. The project adapts the template framework to its existing architecture; template guidance is a starting point, not a mandatory structure.
 
+## Interaction and authorization
+
+- If the user asks a question, explain the answer without changing files or external state.
+- If the user requests implementation, make the requested change within the stated scope.
+- Do not mix explanation and implementation unless requested.
+- Before each tool call, classify the latest user message. Questions, explanations, reviews, diagnoses, status requests, comments, and objections are read-only.
+- File modification is authorized only when the user explicitly requests an action such as edit, modify, change, fix, implement, apply, rewrite, or remove.
+- A question about completed work does not authorize a follow-up edit.
+- If authorization or scope is ambiguous, ask whether the user wants an edit or an explanation.
+
+## State-change boundary
+
+- Implementation authorization is limited to editing source code, tests, and documentation.
+- Do not run maintenance scripts, migrations, backfills, seed commands, database writes, deployment commands, or other state-changing operations without explicit user authorization for that specific operation.
+- Tests and checks must use isolated test data and must not modify `data/jobs.db` or other user data.
+- Do not commit, merge, push, deploy, or send external messages unless explicitly requested.
+
+## Execution priorities
+
+- State assumptions when they affect implementation.
+- If multiple valid interpretations exist, present options or ask before choosing silently.
+- Prefer the minimum code that solves the request; keep changes surgical and directly traceable.
+- Do not refactor unrelated code or add speculative features, abstractions, or configurability.
+- For multi-step tasks, define focused verification checks and run them after implementation.
+- Stop and ask when scope, requirements, or repository behavior materially conflict.
+
 ## Applying the framework
 
 - Prefer explicit project requirements, current repository behavior, and user decisions over generic template defaults.
@@ -34,8 +60,24 @@ This file is the canonical operating guide for this repository. The project adap
 - Prefer deterministic unit tests for core logic and integration tests for API/database interactions.
 - Test edge cases and failure modes.
 - Keep real external API calls in tests marked `@pytest.mark.live`; the default suite excludes them.
-- Run backend tests from `backend/` with `../.venv/bin/python -m pytest`.
-- Run live tests explicitly with `../.venv/bin/python -m pytest -m live -v -s`.
+- Run backend tests from the repository root with `poetry run pytest`.
+- Run live tests explicitly from the repository root with `poetry run pytest -m live -v -s`.
+
+## Frontend work
+
+- Before implementing UI changes, select the closest page pattern from `docs/modes/application/application_rules.md`.
+- Apply that document's display constraints, including user-facing labels and omission of raw IDs, foreign keys, debug metadata, and unformatted timestamps.
+- Reuse existing styles and components; introduce shared primitives incrementally only when they provide clear value.
+
+## Precedence
+
+When instructions overlap, use this order:
+
+1. Explicit user requirements and authorization boundaries.
+2. This repository guide's state-change and blocking rules.
+3. `docs/project/project_rules.md`.
+4. The applicable mode and core documentation.
+5. General conventions and preferences.
 
 ## Command hygiene
 

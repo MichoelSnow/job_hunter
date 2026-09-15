@@ -294,7 +294,26 @@ class TestJobsAPI:
         client, _ = client_with_job
         resp = client.get("/api/jobs/filters/locations")
         assert resp.status_code == 200
-        assert "Manhattan, NY" in resp.json()
+        assert {"value": "nyc", "label": "NYC"} in resp.json()
+
+    def test_location_group_filter_includes_nyc_boroughs(self, client, db_session):
+        for location in ("New York City, New York", "Brooklyn, NY", "Buffalo, NY"):
+            db_session.add(
+                Job(
+                    title=location,
+                    description="desc",
+                    location=location,
+                    application_url=f"https://example.com/{location}",
+                    source="manual",
+                    discovered_date=date(2026, 4, 1),
+                    passes_user_filters=True,
+                )
+            )
+        db_session.commit()
+
+        response = client.get("/api/jobs", params={"location_group": "nyc"})
+        assert response.status_code == 200
+        assert response.json()["total"] == 2
 
     def test_list_jobs_excludes_user_filtered_jobs_for_all_status_views(self, client, db_session):
         visible = Job(
