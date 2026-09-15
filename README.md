@@ -5,7 +5,8 @@ Personal job search aggregation and tracking tool. Discovers data leadership rol
 ## Setup
 
 ### Prerequisites
-- Python 3.13 (via pyenv or system install — **not 3.14**, several ML deps don't support it yet)
+- Python 3.13 - the supported compatibility range is defined in pyproject.toml
+- pyenv is optional. When available, `.python-version` selects the repository’s expected patch version automatically.
 - Poetry (`pip install poetry`)
 - Node.js 20+ and pnpm (`npm install -g pnpm`)
 
@@ -21,7 +22,19 @@ Edit `.env` and fill in your API keys:
 
 Edit `config/user_profile.yaml` with your name, resume path, and skills.
 
-### 2. Create the data directory
+### 2. Select Python
+
+If using pyenv, install and select the version recorded in `.python-version`:
+
+```bash
+pyenv install "$(cat .python-version)"
+pyenv local "$(cat .python-version)"
+poetry env use "$(pyenv which python)"
+```
+
+If you are not using pyenv, use any installed Python 3.13 interpreter that satisfies the `pyproject.toml` constraint and configure Poetry with it.
+
+### 3. Create the data directory
 
 ```bash
 mkdir -p data
@@ -29,13 +42,13 @@ mkdir -p data
 
 Place your resume in `data/` (`.md`, `.docx`, or `.pdf` supported) and update `resume_file_path` in `config/user_profile.yaml` accordingly.
 
-### 3. Install backend dependencies
+### 4. Install backend dependencies
 
 ```bash
 poetry install
 ```
 
-### 4. Start the backend
+### 5. Start the backend
 
 ```bash
 poetry run uvicorn main:app --reload --app-dir backend
@@ -43,7 +56,7 @@ poetry run uvicorn main:app --reload --app-dir backend
 
 API runs at http://localhost:8000. Swagger docs at http://localhost:8000/docs.
 
-### 5. Install and start the frontend
+### 6. Install and start the frontend
 
 ```bash
 cd frontend
@@ -64,8 +77,8 @@ All commands run from the **repo root** unless noted.
 | Command | Description |
 |---|---|
 | `poetry run uvicorn main:app --reload --app-dir backend` | Start dev server |
-| `poetry run pytest` | Run all backend tests |
-| `poetry run pytest backend/tests/unit/` | Unit tests only |
+| `.venv/bin/python -m pytest` | Run all backend tests |
+| `.venv/bin/python -m pytest backend/tests/unit/` | Unit tests only |
 | `poetry run ruff check .` | Lint |
 | `poetry run ruff format .` | Format |
 
@@ -78,11 +91,19 @@ All commands run from the **repo root** unless noted.
 | `pnpm lint` | Lint |
 | `pnpm format` | Format |
 
+## Server deployment
+
+For an always-on Ubuntu deployment accessible from your LAN, see [docs/project/deployment.md](docs/project/deployment.md). It installs persistent user-level `systemd` services and keeps the frontend/API on one origin, suitable as a future Cloudflare Tunnel origin.
+
 ---
 
 ## Project Structure
 
-See [docs/architecture.md](docs/architecture.md) for the full directory layout and design decisions.
+See [docs/project/architecture.md](docs/project/architecture.md) for the full directory layout and design decisions.
+
+## Working with the repository
+
+The canonical agent instructions are in [AGENTS.md](AGENTS.md). Adapted framework guidance is organized under [docs/core](docs/core/), [docs/project](docs/project/), [docs/modes/application](docs/modes/application/), [docs/reference](docs/reference/), and [docs/review](docs/review/).
 
 ## Triggering a Job Search
 

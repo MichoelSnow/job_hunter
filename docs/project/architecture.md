@@ -59,21 +59,11 @@ job_hunter/
 │   └── main.py                   # FastAPI app entry point
 ├── frontend/
 │   ├── src/
-│   │   ├── components/           # Reusable UI pieces
-│   │   │   ├── JobCard.jsx
-│   │   │   ├── JobList.jsx
-│   │   │   ├── JobDetails.jsx
-│   │   │   ├── JobFilters.jsx
-│   │   │   ├── ApplicationForm.jsx
-│   │   │   └── Dashboard.jsx
 │   │   ├── pages/                # Route-level components
 │   │   │   ├── JobsPage.jsx
 │   │   │   ├── ApplicationsPage.jsx
 │   │   │   ├── CompaniesPage.jsx
 │   │   │   └── SettingsPage.jsx
-│   │   ├── hooks/                # React Query data-fetching hooks
-│   │   │   ├── useJobs.js
-│   │   │   └── useApplications.js
 │   │   ├── services/
 │   │   │   └── api.js            # Axios client + all API calls
 │   │   ├── App.jsx
@@ -85,9 +75,17 @@ job_hunter/
 │   └── skill_taxonomy.json       # Skill normalization taxonomy
 ├── data/                         # SQLite DB lives here (gitignored)
 ├── docs/
-│   ├── architecture.md           # This file
-│   ├── engineering_guide.md
-│   └── project_plan.md
+│   ├── core/                     # Adapted operating principles
+│   ├── modes/application/        # Frontend application guidance
+│   ├── project/                  # Current project docs and plans
+│   │   ├── architecture.md       # This file
+│   │   ├── deployment.md
+│   │   ├── engineering_guide.md
+│   │   ├── implementation_checklist.md
+│   │   ├── project_plan.md
+│   │   └── project_rules.md
+│   ├── reference/                # Optional deeper guidance
+│   └── review/                   # Optional review guidance
 ├── pyproject.toml                # Poetry — single Python dependency file
 ├── .env                          # Secrets (gitignored)
 ├── .env.example
@@ -147,7 +145,7 @@ The score reflects only how well the user's matching profile aligns with each jo
 - **python-docx + pypdf** — resume file parsing
 
 ### Frontend
-- **React 18** — UI framework
+- **React 19** — UI framework
 - **Vite** — build tool
 - **Tailwind CSS + shadcn/ui** — styling and components
 - **React Query (TanStack Query)** — server state and caching

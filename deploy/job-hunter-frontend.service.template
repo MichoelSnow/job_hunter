@@ -1,0 +1,16 @@
+[Unit]
+Description=Job Hunter frontend
+After=job-hunter-backend.service
+Wants=job-hunter-backend.service
+
+[Service]
+Type=simple
+WorkingDirectory=__REPO_DIR__/frontend
+ExecStart=__PNPM__ preview --host 0.0.0.0 --port 5173
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PATH=__NODE_BIN__:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+[Install]
+WantedBy=default.target
