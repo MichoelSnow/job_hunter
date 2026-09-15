@@ -10,7 +10,12 @@ Single-user, locally-run job search aggregation tool. No authentication, no mult
 
 ```
 job_hunter/
+├── .github/
+│   └── workflows/
+│       └── ci.yml              # Automated backend and frontend checks
 ├── backend/
+│   ├── scripts/                # Maintenance and data migration scripts
+│   │   └── update_historic_locations.py
 │   ├── app/
 │   │   ├── api/                  # FastAPI routers, one file per resource group
 │   │   │   ├── __init__.py
@@ -66,6 +71,8 @@ job_hunter/
 │   │   │   └── SettingsPage.jsx
 │   │   ├── services/
 │   │   │   └── api.js            # Axios client + all API calls
+│   │   ├── utils/                # Shared frontend formatting and utility functions
+│   │   │   └── formatters.js
 │   │   ├── App.jsx
 │   │   └── main.jsx
 │   ├── package.json
@@ -103,6 +110,10 @@ This tool runs locally for one person. There is no `users` table and no authenti
 The SQLite database accumulates data across all job search sessions — whether the user runs it weekly, returns after 3 months, or picks it up again a year later. Jobs are never purged; they remain with their `discovered_date` timestamp. The UI defaults to showing jobs from the last 60 days, with a date filter to expand the view. Applications and history are always preserved.
 
 This means no concept of "search sessions" at the schema level — `discovered_date` on each job row is sufficient to scope any time window.
+
+### Location Normalization
+
+Incoming location text is preserved in `jobs.location_raw`, while `jobs.location` stores a standardized city-level display value used by the UI. Structured `job_locations` records store each city, state, and country for filtering. Known aliases such as `NYC`, `New York`, and the five New York City borough names remain distinct city values; the location filter expands them to the New York City group when requested. Multiple source locations are displayed as a semicolon-separated list. Arrangement markers remain in `work_arrangement` and are not treated as geographic locations. Unrecognized or placeholder values such as `None, None` normalize to an empty location and remain available through `location_raw`.
 
 For scraper-sourced jobs, if a role disappears from a successful scrape for that company/source, the job is marked closed by setting `closed_date` to that scrape date. If the role reappears in a later scrape, `closed_date` is cleared.
 
@@ -158,7 +169,6 @@ The score reflects only how well the user's matching profile aligns with each jo
 - **ruff** — Python linting and formatting (replaces black + pylint)
 - **pytest + httpx** — backend testing
 - **ESLint + Prettier** — frontend linting and formatting
-- **gitleaks** — secret scanning in CI
 
 ---
 

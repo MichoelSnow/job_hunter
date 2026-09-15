@@ -38,23 +38,25 @@ This is the project-specific reference for coding standards, testing, tooling, a
 - Run from `backend/`:
 
   ```bash
-  ../.venv/bin/python -m pytest
+  poetry run pytest
   ```
 
 - Run live tests explicitly when credentials and network access are available:
 
   ```bash
-  ../.venv/bin/python -m pytest -m live -v -s
+  poetry run pytest -m live -v -s
   ```
 
 ## Frontend testing and checks
 
-The frontend currently has build and lint checks but no committed component-test suite. For frontend changes, run the checks from `frontend/`:
+The frontend has lightweight Vitest unit tests plus lint and build checks. For frontend changes, run:
 
 ```bash
-pnpm lint
-pnpm build
+pnpm test
+pnpm check
 ```
+
+The individual commands remain available as `pnpm lint` and `pnpm build`. Add focused component tests when behavior becomes sufficiently complex to warrant them; CI currently gates frontend changes on tests, lint, and production build success.
 
 When frontend behavior becomes sufficiently complex to warrant tests, add focused React tests for filters, loading/error/empty states, application updates, and API failure handling.
 
@@ -66,6 +68,12 @@ From the repository root:
 poetry run ruff check .
 poetry run ruff format .
 ```
+
+Ruff currently selects the `E`, `F`, `I`, and `UP` rule families. The
+`E501`, `I001`, and `UP043` exclusions are intentional temporary exceptions
+for existing lint debt in this solo-project repository. They keep routine CI
+useful while avoiding a large unrelated cleanup; remove or narrow them after
+that cleanup is completed.
 
 From `frontend/`:
 
@@ -106,3 +114,27 @@ Poetry and pnpm are the dependency-management authorities. Do not add a second l
 - Update the relevant project documentation when behavior or data flow changes.
 - Use [implementation_checklist.md](implementation_checklist.md) for phased work status rather than duplicating task lists elsewhere.
 - Review changes with the advisory guidance under `docs/review/` when useful; it is not an automatic merge gate.
+
+## Database maintenance scripts
+
+Run backend maintenance scripts from `backend/` with Poetry. To normalize locations for historic jobs while preserving their original values:
+
+```bash
+poetry run python -m scripts.update_historic_locations --dry-run
+poetry run python -m scripts.update_historic_locations
+```
+
+The dry run is optional but recommended before committing the update. The operation is rerunnable and only updates rows whose normalized value or preserved raw value changes.
+
+## Continuous integration
+
+GitHub Actions runs on pushes to `main` and pull requests. It installs Python
+3.13 and Poetry, then runs:
+
+- backend pytest (`poetry run pytest`)
+- backend Ruff (`poetry run ruff check backend`)
+- frontend Vitest (`pnpm test`)
+- frontend ESLint (`pnpm lint` through `pnpm check`)
+- frontend production build (`pnpm build` through `pnpm check`)
+
+Live backend tests remain excluded from CI unless explicitly selected.

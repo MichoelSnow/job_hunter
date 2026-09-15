@@ -4,6 +4,7 @@ from app.services.job_normalization import (
     extract_salary_from_text,
     html_to_text,
     infer_work_arrangement,
+    normalize_location,
     sanitize_description_html,
 )
 
@@ -26,7 +27,6 @@ class TestInferWorkArrangement:
             is_remote=None,
         )
         assert value == "hybrid"
-
     def test_in_office_signal_from_description(self):
         value = infer_work_arrangement(
             title="Head of Data",
@@ -56,6 +56,31 @@ class TestInferWorkArrangement:
             is_remote=None,
         )
         assert value == "hybrid"
+
+
+class TestNormalizeLocation:
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("New york city", "New York City, NY"),
+            ("New York, NY", "New York City, NY"),
+            ("New York", "New York City, NY"),
+            ("NY", "New York City, NY"),
+            ("New York City, New York", "New York City, NY"),
+            ("New York, New York, United States", "New York City, NY"),
+            ("New York Office", "New York City, NY"),
+            ("SF Office", "San Francisco, CA"),
+            ("Sf; Ny Hybrid Optional", "San Francisco, CA; New York City, NY"),
+            ("Remote (SF or NY hybrid optional)", "San Francisco, CA; New York City, NY"),
+            ("2 Locations", None),
+            ("Remote, United States", "United States"),
+            ("Hybrid - Palo Alto or San Francisco", "Palo Alto; San Francisco, CA"),
+            ("New York, NY or Remote", "New York City, NY"),
+            ("None, None", None),
+        ],
+    )
+    def test_normalizes_city_level_locations(self, raw, expected):
+        assert normalize_location(raw) == expected
 
 
 class TestHtmlToText:

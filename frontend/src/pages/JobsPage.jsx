@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import {
   getJob,
-  getJobLocations,
   getJobs,
   getRefreshStatus,
   hideJob,
@@ -10,6 +9,7 @@ import {
   refreshScrapedJobs,
   unhideJob,
 } from "../services/api";
+import { formatLocation, formatSalary } from "../utils/formatters";
 
 const PAGE_SIZE = 50;
 const COLUMN_PREFS_KEY = "jobs.visibleColumns";
@@ -64,14 +64,6 @@ function ScoreBadge({ score }) {
   );
 }
 
-function formatSalary(job) {
-  if (!job.salary_min && !job.salary_max) return "—";
-  const min = job.salary_min ? `$${job.salary_min.toLocaleString()}` : "";
-  const max = job.salary_max ? `$${job.salary_max.toLocaleString()}` : "";
-  if (min && max) return `${min} - ${max}`;
-  return min || max;
-}
-
 function JobDetailPanel({ jobId, onClose, onHideToggle }) {
   const { data: job, isLoading } = useQuery({
     queryKey: ["job", jobId],
@@ -100,7 +92,7 @@ function JobDetailPanel({ jobId, onClose, onHideToggle }) {
             </div>
             <div>
               <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Location</div>
-              <div>{job.location ?? "—"}</div>
+              <div>{formatLocation(job.location)}</div>
             </div>
             <div>
               <div className="text-xs text-gray-400 uppercase tracking-wide mb-0.5">Arrangement</div>
@@ -238,14 +230,6 @@ export default function JobsPage() {
     queryFn: () => getJobs(queryParams),
   });
 
-  const { data: locationOptions = [] } = useQuery({
-    queryKey: ["job-locations", statusFilter],
-    queryFn: () =>
-      getJobLocations(
-        isActiveParam === undefined ? {} : { is_active: isActiveParam },
-      ),
-  });
-
   const refreshApiMutation = useMutation({
     mutationFn: refreshApiJobs,
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["refreshStatus"] }),
@@ -361,18 +345,13 @@ export default function JobsPage() {
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-0.5">Location</label>
-            <select
+            <input
+              type="text"
               value={filters.location}
               onChange={(e) => setFilter("location", e.target.value)}
-              className="w-48 border rounded px-2 py-1 text-sm"
-            >
-              <option value="">All</option>
-              {locationOptions.map((location) => (
-                <option key={location} value={location}>
-                  {location}
-                </option>
-              ))}
-            </select>
+              placeholder="City, state, or country"
+              className="w-52 border rounded px-2 py-1 text-sm"
+            />
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-0.5">Days old</label>
@@ -511,7 +490,7 @@ export default function JobsPage() {
                       <td className="px-4 py-2 text-gray-700">{job.company_name ?? "—"}</td>
                     )}
                     {visibleColumns.location && (
-                      <td className="px-4 py-2 text-gray-600">{job.location ?? "—"}</td>
+                      <td className="px-4 py-2 text-gray-600">{formatLocation(job.location)}</td>
                     )}
                     {visibleColumns.work_arrangement && (
                       <td className="px-4 py-2 text-gray-600">{job.work_arrangement ?? "—"}</td>

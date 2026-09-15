@@ -34,6 +34,7 @@ class Job(Base):
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     location: Mapped[str | None] = mapped_column(String(255))
+    location_raw: Mapped[str | None] = mapped_column(String(500))
     # 'remote', 'hybrid', 'in_office', 'unknown'
     work_arrangement: Mapped[str | None] = mapped_column(String(100))
     days_in_office: Mapped[int | None] = mapped_column(Integer)
@@ -66,6 +67,9 @@ class Job(Base):
     )
 
     company: Mapped[Company | None] = relationship("Company", back_populates="jobs")
+    locations: Mapped[list[JobLocation]] = relationship(
+        "JobLocation", back_populates="job", cascade="all, delete-orphan"
+    )
     requirements: Mapped[list[JobRequirement]] = relationship(
         "JobRequirement", back_populates="job", cascade="all, delete-orphan"
     )
@@ -107,3 +111,23 @@ class JobRequirement(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
 
     job: Mapped[Job] = relationship("Job", back_populates="requirements")
+
+
+class JobLocation(Base):
+    __tablename__ = "job_locations"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    city: Mapped[str | None] = mapped_column(String(255))
+    state: Mapped[str | None] = mapped_column(String(100))
+    country: Mapped[str | None] = mapped_column(String(100))
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    job: Mapped[Job] = relationship("Job", back_populates="locations")
+
+    __table_args__ = (
+        Index("idx_job_locations_job", "job_id"),
+        Index("idx_job_locations_city", "city"),
+        Index("idx_job_locations_state", "state"),
+        Index("idx_job_locations_country", "country"),
+    )

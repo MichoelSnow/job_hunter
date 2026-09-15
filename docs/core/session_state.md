@@ -13,7 +13,7 @@ Use this file as concise handoff context for multi-step work. Update it when a w
 
 ## Open work
 
-- Update this file only when there is meaningful multi-step work to hand off.
+- After the current location normalization/filtering and CI changes are merged, clean up the existing Ruff violations and remove or narrow the temporary `E501`, `I001`, and `UP043` exclusions. Restore stricter lint enforcement in CI when that cleanup is complete.
 
 ## Resume prompt
 

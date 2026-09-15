@@ -6,8 +6,6 @@ from typing import Any
 import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
 
-from app.config.settings import settings
-
 logger = logging.getLogger(__name__)
 
 

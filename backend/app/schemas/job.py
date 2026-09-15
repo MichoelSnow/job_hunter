@@ -8,6 +8,7 @@ class JobBase(BaseModel):
     title: str
     description: str
     location: str | None = None
+    location_raw: str | None = None
     work_arrangement: str | None = None
     days_in_office: int | None = None
     salary_min: int | None = None

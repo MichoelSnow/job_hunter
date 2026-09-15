@@ -68,8 +68,6 @@ def test_live_full_pipeline(db_session):
     real_jsearch_key = os.environ["JSEARCHAPI_KEY"]
 
     # Intercept all HTTP; let only JSearch through
-    original_get = None
-
     def dispatch_get(url, **kwargs):
         if "openwebninja" in url:
             # Real JSearch call — use the actual requests library

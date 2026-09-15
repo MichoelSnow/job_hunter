@@ -76,6 +76,9 @@ def _ensure_sqlite_job_columns() -> None:
         if "closed_date" not in columns:
             logger.info("Adding missing jobs.closed_date column")
             conn.exec_driver_sql("ALTER TABLE jobs ADD COLUMN closed_date DATE")
+        if "location_raw" not in columns:
+            logger.info("Adding missing jobs.location_raw column")
+            conn.exec_driver_sql("ALTER TABLE jobs ADD COLUMN location_raw VARCHAR(500)")
         if "passes_user_filters" not in columns:
             logger.info("Adding missing jobs.passes_user_filters column")
             conn.exec_driver_sql("ALTER TABLE jobs ADD COLUMN passes_user_filters BOOLEAN DEFAULT 1")

@@ -7,9 +7,7 @@ real in-memory SQLite DB built from the ORM models.
 These tests exist specifically to catch schema drift between ORM models and the
 DB, and to verify the pipeline wiring is correct end-to-end.
 """
-import json
 from datetime import date
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest

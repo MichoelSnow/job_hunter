@@ -7,6 +7,7 @@ from typing import Literal
 from sqlalchemy.orm import Session
 
 from app.models.job import Job
+from app.services.job_normalization import normalize_location
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +101,7 @@ class JobFilter:
     def _passes_location(self, job: dict) -> bool:
         if self._location_ast is None:
             return True
-        location = str(job.get("location") or "")
+        location = normalize_location(job.get("location")) or ""
         return evaluate_boolean_query(
             self._location_ast,
             location,
