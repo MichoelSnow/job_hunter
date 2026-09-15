@@ -39,6 +39,152 @@ _SALARY_SINGLE_RE = re.compile(
     re.IGNORECASE,
 )
 
+_LOCATION_PLACEHOLDER_RE = re.compile(
+    r"^(?:none|null|n/?a|unknown|not specified|)$", re.IGNORECASE
+)
+_LOCATION_SPLIT_RE = re.compile(r"\s*(?:\bor\b|\band\b|[;|])\s*", re.IGNORECASE)
+_US_STATES = {
+    "alabama": "AL", "alaska": "AK", "arizona": "AZ", "arkansas": "AR",
+    "california": "CA", "colorado": "CO", "connecticut": "CT", "delaware": "DE",
+    "florida": "FL", "georgia": "GA", "hawaii": "HI", "idaho": "ID",
+    "illinois": "IL", "indiana": "IN", "iowa": "IA", "kansas": "KS",
+    "kentucky": "KY", "louisiana": "LA", "maine": "ME", "maryland": "MD",
+    "massachusetts": "MA", "michigan": "MI", "minnesota": "MN", "mississippi": "MS",
+    "missouri": "MO", "montana": "MT", "nebraska": "NE", "nevada": "NV",
+    "new hampshire": "NH", "new jersey": "NJ", "new mexico": "NM", "new york": "NY",
+    "north carolina": "NC", "north dakota": "ND", "ohio": "OH", "oklahoma": "OK",
+    "oregon": "OR", "pennsylvania": "PA", "rhode island": "RI", "south carolina": "SC",
+    "south dakota": "SD", "tennessee": "TN", "texas": "TX", "utah": "UT",
+    "vermont": "VT", "virginia": "VA", "washington": "WA", "west virginia": "WV",
+    "wisconsin": "WI", "wyoming": "WY", "district of columbia": "DC",
+}
+_US_STATE_CODES = set(_US_STATES.values())
+_NYC_ALIASES = {
+    "new york city": "New York City",
+    "new york": "New York City",
+    "nyc": "New York City",
+    "manhattan": "Manhattan",
+    "brooklyn": "Brooklyn",
+    "queens": "Queens",
+    "the bronx": "Bronx",
+    "bronx": "Bronx",
+    "staten island": "Staten Island",
+}
+_CITY_ALIASES = {
+    "sf": "San Francisco",
+    "s.f.": "San Francisco",
+    "san francisco": "San Francisco",
+    "ny": "New York City",
+}
+_INFERRED_CITY_STATES = {
+    "new york city": "NY",
+    "san francisco": "CA",
+}
+_ARRANGEMENT_ONLY_LOCATIONS = {
+    "remote",
+    "hybrid",
+    "on site",
+    "onsite",
+    "in office",
+    "in-office",
+}
+
+
+def normalize_location(value: str | None) -> str | None:
+    """Normalize source location text into a city-level display value."""
+    if not value:
+        return None
+
+    text = re.sub(r"\s+", " ", str(value)).strip(" ,;-–—")
+    if not text or _LOCATION_PLACEHOLDER_RE.fullmatch(text):
+        return None
+
+    text = re.sub(r"^\s*(?:remote|hybrid|on[- ]?site|in[- ]?office)\s*[-:;,]?\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\s*\((?:remote|hybrid|on[- ]?site|in[- ]?office)\)\s*", "", text, flags=re.IGNORECASE)
+    text = re.sub(
+        r"\s+(?:hybrid|remote|on[- ]?site|in[- ]?office)(?:\s+optional)?\s*$",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if text.startswith("(") and text.endswith(")"):
+        text = text[1:-1].strip()
+        text = re.sub(
+            r"\s+(?:hybrid|remote|on[- ]?site|in[- ]?office)(?:\s+optional)?\s*$",
+            "",
+            text,
+            flags=re.IGNORECASE,
+        )
+    parts = [
+        part.strip(" ,;-–—")
+        for part in _LOCATION_SPLIT_RE.split(text)
+        if part.strip(" ,;-–—").casefold() not in _ARRANGEMENT_ONLY_LOCATIONS
+    ]
+    normalized = [_normalize_location_part(part) for part in parts]
+    values = list(dict.fromkeys(part for part in normalized if part))
+    return "; ".join(values) if values else None
+
+
+def parse_locations(value: str | None) -> list[dict[str, str | None]]:
+    """Parse source location text into city/state/country records."""
+    display = normalize_location(value)
+    if not display:
+        return []
+
+    records: list[dict[str, str | None]] = []
+    for item in display.split("; "):
+        parts = [part.strip() for part in item.split(",")]
+        if len(parts) == 1 and parts[0] == "United States":
+            records.append({"city": None, "state": None, "country": "United States", "display_name": item})
+            continue
+        city = parts[0] or None
+        state = parts[1] if len(parts) > 1 else None
+        country = parts[2] if len(parts) > 2 else None
+        if country is None and state and state.casefold() in {"united states", "usa", "us"}:
+            country, state = "United States", None
+        records.append({"city": city, "state": state, "country": country, "display_name": item})
+    return records
+
+
+def _normalize_location_part(value: str) -> str | None:
+    parts = [part.strip() for part in value.split(",") if part.strip()]
+    cleaned = [part for part in parts if not _LOCATION_PLACEHOLDER_RE.fullmatch(part)]
+    if not cleaned:
+        return None
+
+    if len(cleaned) == 1:
+        city = re.sub(r"\s+office$", "", cleaned[0].strip(), flags=re.IGNORECASE)
+        if re.fullmatch(r"\d+\s+locations?", city, flags=re.IGNORECASE):
+            return None
+        city_key = city.casefold()
+        if city_key in _CITY_ALIASES:
+            city = _CITY_ALIASES[city_key]
+        elif city_key in _NYC_ALIASES:
+            city = _NYC_ALIASES[city_key]
+        if city_key in {"united states", "usa", "us", "u.s.", "u.s.a."}:
+            return "United States"
+        state = _INFERRED_CITY_STATES.get(city.casefold())
+        if state:
+            return f"{city}, {state}"
+        return city.title()
+
+    city = re.sub(r"\s+office$", "", cleaned[0], flags=re.IGNORECASE)
+    region = cleaned[-1].casefold()
+    city_key = city.casefold()
+    if city_key in _NYC_ALIASES:
+        city = _NYC_ALIASES[city_key]
+    elif city_key == "new york" and region in {"ny", "new york"}:
+        city = "New York"
+    if region.upper() in _US_STATE_CODES:
+        return f"{city.title()}, {region.upper()}"
+    if region in _US_STATES:
+        return f"{city.title()}, {_US_STATES[region]}"
+    if region in {"united states", "usa", "us", "u.s.", "u.s.a."}:
+        if city.casefold() in {"new york", "new york city"}:
+            return "New York City, NY"
+        return city.title()
+    return f"{city.title()}, {cleaned[-1].title()}"
+
 
 def infer_work_arrangement(
     *,

@@ -104,6 +104,10 @@ The SQLite database accumulates data across all job search sessions — whether 
 
 This means no concept of "search sessions" at the schema level — `discovered_date` on each job row is sufficient to scope any time window.
 
+### Location Normalization
+
+Incoming location text is preserved in `jobs.location_raw`, while `jobs.location` stores a standardized city-level display value used by the UI. Structured `job_locations` records store each city, state, and country for filtering. Known aliases such as `NYC`, `New York`, and the five New York City borough names remain distinct city values; the location filter expands them to the New York City group when requested. Multiple source locations are displayed as a semicolon-separated list. Arrangement markers remain in `work_arrangement` and are not treated as geographic locations. Unrecognized or placeholder values such as `None, None` normalize to an empty location and remain available through `location_raw`.
+
 For scraper-sourced jobs, if a role disappears from a successful scrape for that company/source, the job is marked closed by setting `closed_date` to that scrape date. If the role reappears in a later scrape, `closed_date` is cleared.
 
 Scraper target settings are sourced from the `companies` DB table (edited via the Companies page), including Workday board/instance and HTML selectors.

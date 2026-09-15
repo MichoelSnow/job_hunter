@@ -1,17 +1,19 @@
 """Upsert logic for persisting normalized job dicts to the database."""
 import logging
-from datetime import date, datetime
+from datetime import date
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
-from app.models.job import Job, JobRequirement
+from app.models.job import Job, JobLocation, JobRequirement
 from app.models.tracking import ApiUsageTracking
 from app.services.job_normalization import (
     extract_salary_from_text,
     html_to_text,
     infer_work_arrangement,
+    normalize_location,
+    parse_locations,
 )
 
 logger = logging.getLogger(__name__)
@@ -22,6 +24,7 @@ _MUTABLE_JOB_FIELDS = (
     "title",
     "description",
     "location",
+    "location_raw",
     "work_arrangement",
     "salary_min",
     "salary_max",
@@ -69,6 +72,10 @@ def upsert_job(db: Session, job_dict: dict[str, Any], company_id: int | None) ->
     Returns (job, created) where created=True means it was a new insertion.
     Jobs with no external_id are always inserted (e.g. manual entries).
     """
+    job_dict = dict(job_dict)
+    raw_location = job_dict.get("location_raw") or job_dict.get("location")
+    job_dict["location_raw"] = raw_location
+    job_dict["location"] = normalize_location(raw_location)
     external_id = job_dict.get("external_id")
 
     existing: Job | None = None
@@ -88,6 +95,7 @@ def upsert_job(db: Session, job_dict: dict[str, Any], company_id: int | None) ->
                 if field in ("posted_date",) and isinstance(value, str):
                     value = date.fromisoformat(value)
                 setattr(existing, field, value)
+        _replace_job_locations(db, existing)
         return existing, False
 
     # Build the Job, excluding keys that don't map to model columns
@@ -106,7 +114,16 @@ def upsert_job(db: Session, job_dict: dict[str, Any], company_id: int | None) ->
 
     job = Job(**job_fields)
     db.add(job)
+    db.flush()
+    _replace_job_locations(db, job)
     return job, True
+
+
+def _replace_job_locations(db: Session, job: Job) -> None:
+    """Replace structured location records for a job from its preserved source value."""
+    db.query(JobLocation).filter(JobLocation.job_id == job.id).delete()
+    for location in parse_locations(job.location_raw):
+        db.add(JobLocation(job_id=job.id, **location))
 
 
 def record_api_usage(db: Session, api_name: str, request_count: int) -> None:
@@ -291,6 +308,29 @@ def backfill_missing_work_arrangements(db: Session) -> int:
 
     db.commit()
     logger.info("Backfilled work arrangements for %d historic jobs", updated)
+    return updated
+
+
+def backfill_normalized_locations(db: Session, *, commit: bool = True) -> int:
+    """Normalize locations already stored before structured location support."""
+    updated = 0
+    for job in db.query(Job).all():
+        raw_location = job.location_raw or job.location
+        old_location = job.location
+        normalized = normalize_location(raw_location)
+        changed = job.location_raw != raw_location or job.location != normalized
+        if changed:
+            job.location_raw = raw_location
+            job.location = normalized
+        if old_location != normalized or not job.locations:
+            _replace_job_locations(db, job)
+            changed = True
+        if changed:
+            updated += 1
+
+    if updated and commit:
+        db.commit()
+    logger.info("Normalized locations for %d historic jobs", updated)
     return updated
 
 

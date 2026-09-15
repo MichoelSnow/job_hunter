@@ -49,12 +49,14 @@ This is the project-specific reference for coding standards, testing, tooling, a
 
 ## Frontend testing and checks
 
-The frontend currently has build and lint checks but no committed component-test suite. For frontend changes, run the checks from `frontend/`:
+The frontend has lightweight Vitest unit tests plus lint and build checks. For frontend changes, run:
 
 ```bash
-pnpm lint
-pnpm build
+pnpm test
+pnpm check
 ```
+
+The individual commands remain available as `pnpm lint` and `pnpm build`. Add focused component tests when behavior becomes sufficiently complex to warrant them; CI currently gates frontend changes on tests, lint, and production build success.
 
 When frontend behavior becomes sufficiently complex to warrant tests, add focused React tests for filters, loading/error/empty states, application updates, and API failure handling.
 
@@ -106,3 +108,18 @@ Poetry and pnpm are the dependency-management authorities. Do not add a second l
 - Update the relevant project documentation when behavior or data flow changes.
 - Use [implementation_checklist.md](implementation_checklist.md) for phased work status rather than duplicating task lists elsewhere.
 - Review changes with the advisory guidance under `docs/review/` when useful; it is not an automatic merge gate.
+
+## Database maintenance scripts
+
+Run backend maintenance scripts from `backend/` with the project virtualenv. To normalize locations for historic jobs while preserving their original values:
+
+```bash
+../.venv/bin/python -m scripts.update_historic_locations --dry-run
+../.venv/bin/python -m scripts.update_historic_locations
+```
+
+The dry run is optional but recommended before committing the update. The operation is rerunnable and only updates rows whose normalized value or preserved raw value changes.
+
+## Continuous integration
+
+GitHub Actions runs on pushes to `main` and pull requests. It installs Python 3.13 and Poetry, runs the backend pytest suite and Ruff, then installs the frontend with pnpm and runs `pnpm check` (ESLint plus the Vite production build). Live backend tests remain excluded from CI unless explicitly selected.

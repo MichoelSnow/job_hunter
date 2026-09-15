@@ -3,19 +3,21 @@ from html import escape
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
-from sqlalchemy import asc, desc, func
+from sqlalchemy import asc, desc, func, or_
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.company import Company
-from app.models.job import Job
+from app.models.job import Job, JobLocation
 from app.schemas.job import JobListResponse, JobResponse
-from app.services.job_normalization import html_to_text, sanitize_description_html
+from app.services.job_normalization import html_to_text, normalize_location, sanitize_description_html
 from app.services.scoring_engine import ScoringEngine
 from app.services.user_settings import get_or_create_user_settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/jobs", tags=["jobs"])
+
+_NYC_CITIES = ("New York", "New York City", "Manhattan", "Brooklyn", "Queens", "Bronx", "Staten Island")
 
 
 def _sanitize_job_response(job: Job, *, include_rich_description: bool) -> JobResponse:
@@ -165,7 +167,30 @@ def list_jobs(
     if min_score is not None:
         query = query.filter(Job.overall_match_score >= min_score)
     if location:
-        query = query.filter(Job.location.contains(location))
+        if location == "__unknown__":
+            query = query.filter(Job.location.is_(None))
+        else:
+            input_location = location.casefold().strip()
+            normalized_location = (normalize_location(location) or location).casefold()
+            if input_location in {"new york city", "nyc", "new york"} or normalized_location in {
+                "new york city",
+                "new york city, ny",
+            }:
+                query = query.filter(Job.locations.any(JobLocation.city.in_(_NYC_CITIES)))
+            elif input_location in {"new york state", "ny"} or normalized_location == "new york state":
+                query = query.filter(Job.locations.any(JobLocation.state == "NY"))
+            elif normalized_location in {"united states", "usa", "us"}:
+                query = query.filter(Job.locations.any(JobLocation.country == "United States"))
+            else:
+                query = query.filter(
+                    Job.locations.any(
+                        or_(
+                            JobLocation.city.ilike(f"%{location}%"),
+                            JobLocation.state.ilike(f"%{location}%"),
+                            JobLocation.country.ilike(f"%{location}%"),
+                        )
+                    )
+                )
     if days is not None:
         cutoff = date.today() - timedelta(days=days)
         query = query.filter(Job.discovered_date >= cutoff)
@@ -309,11 +334,16 @@ def list_job_locations(
     db: Session = Depends(get_db),
 ) -> list[str]:
     """Return distinct non-empty locations for dropdown filtering."""
+    unknown_query = db.query(Job.id).filter((Job.location.is_(None)) | (Job.location == ""))
     query = db.query(Job.location).filter(Job.location.is_not(None), Job.location != "")
     if is_active is not None:
         query = query.filter(Job.is_active == is_active)
+        unknown_query = unknown_query.filter(Job.is_active == is_active)
     rows = query.distinct().order_by(Job.location.asc()).all()
-    return [row[0] for row in rows]
+    locations = [row[0] for row in rows]
+    if unknown_query.first() is not None:
+        locations.append("__unknown__")
+    return locations
 
 
 @router.put("/{job_id}/score")

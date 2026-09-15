@@ -2,7 +2,7 @@
 import logging
 import time
 from datetime import date, datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import requests
 from tenacity import retry, stop_after_attempt, wait_exponential
@@ -13,6 +13,11 @@ from app.services.job_normalization import (
     html_to_text,
     infer_work_arrangement,
 )
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from app.services.scoring_engine import ScoringEngine
 
 logger = logging.getLogger(__name__)
 

@@ -3,7 +3,7 @@ from datetime import date
 from pathlib import Path
 
 from app.models.company import Company
-from app.models.job import Job, JobRequirement
+from app.models.job import Job, JobLocation, JobRequirement
 
 
 # ---------------------------------------------------------------------------
@@ -35,6 +35,40 @@ class TestJobsAPI:
         body = resp.json()
         assert body["total"] == 0
         assert body["items"] == []
+
+    def test_location_filter_supports_city_and_parent_regions(self, client, db_session):
+        brooklyn = Job(
+            title="Brooklyn role",
+            description="desc",
+            location="Brooklyn, NY",
+            work_arrangement="hybrid",
+            application_url="https://example.com/brooklyn",
+            source="manual",
+            discovered_date=date(2026, 4, 1),
+            passes_user_filters=True,
+        )
+        california = Job(
+            title="California role",
+            description="desc",
+            location="San Francisco, CA",
+            work_arrangement="hybrid",
+            application_url="https://example.com/sf",
+            source="manual",
+            discovered_date=date(2026, 4, 1),
+            passes_user_filters=True,
+        )
+        db_session.add_all([brooklyn, california])
+        db_session.flush()
+        db_session.add_all([
+            JobLocation(job_id=brooklyn.id, city="Brooklyn", state="NY", country="United States", display_name="Brooklyn, NY"),
+            JobLocation(job_id=california.id, city="San Francisco", state="CA", country="United States", display_name="San Francisco, CA"),
+        ])
+        db_session.commit()
+
+        nyc = client.get("/api/jobs", params={"location": "New York City"}).json()
+        state = client.get("/api/jobs", params={"location": "New York State"}).json()
+        assert [item["title"] for item in nyc["items"]] == ["Brooklyn role"]
+        assert [item["title"] for item in state["items"]] == ["Brooklyn role"]
 
     def test_list_jobs_returns_seeded_job(self, client_with_job):
         client, job_id = client_with_job
