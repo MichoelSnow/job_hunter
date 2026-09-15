@@ -83,7 +83,9 @@ class TestResumeMatchScoring:
 
     def test_missing_all_match_inputs_returns_zero(self):
         engine = _engine(experience_years=None, current_title=None, skills=[])
-        score = engine.score(_job(required_skills=[], experience_required=None, title="Unknown Role"))[0]
+        score = engine.score(
+            _job(required_skills=[], experience_required=None, title="Unknown Role")
+        )[0]
         assert score == 0.0
 
     def test_all_score_fields_are_equal(self):

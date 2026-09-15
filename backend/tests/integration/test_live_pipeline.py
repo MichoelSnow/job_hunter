@@ -13,17 +13,17 @@ To run explicitly (load .env first):
     set -a; source .env; set +a
     .venv/bin/python -m pytest -m live -v -s
 """
+
 import os
 from unittest.mock import MagicMock, patch
 
+import app.models  # noqa: F401
 import pytest
+from app.db.base import Base
+from app.models.job import Job, JobRequirement
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
-
-import app.models  # noqa: F401
-from app.db.base import Base
-from app.models.job import Job, JobRequirement
 
 pytestmark = pytest.mark.live
 
@@ -72,6 +72,7 @@ def test_live_full_pipeline(db_session):
         if "openwebninja" in url:
             # Real JSearch call — use the actual requests library
             import requests as _requests
+
             session = _requests.Session()
             session.headers.update({"x-api-key": real_jsearch_key})
             return session.get(url, **kwargs)
@@ -84,11 +85,14 @@ def test_live_full_pipeline(db_session):
 
     db_session.close = lambda: None  # prevent run_job_discovery from closing our test session
 
-    with patch("app.services.api_aggregator.settings") as mock_settings, \
-         patch("app.db.session.SessionLocal", return_value=db_session), \
-         patch("requests.Session.get", side_effect=dispatch_get), \
-         patch("requests.Session.post", return_value=_mock_response({"total": 0, "jobPostings": []})):
-
+    with (
+        patch("app.services.api_aggregator.settings") as mock_settings,
+        patch("app.db.session.SessionLocal", return_value=db_session),
+        patch("requests.Session.get", side_effect=dispatch_get),
+        patch(
+            "requests.Session.post", return_value=_mock_response({"total": 0, "jobPostings": []})
+        ),
+    ):
         mock_settings.jsearchapi_key = real_jsearch_key
         mock_settings.serplyapi_key = ""  # disabled — no Serply calls
         mock_settings.jsearch_num_pages = 1
@@ -106,7 +110,8 @@ def test_live_full_pipeline(db_session):
         run_job_discovery()
 
     assert discovery_status["status"] == "complete", (
-        f"Pipeline ended with status={discovery_status['status']!r}: {discovery_status.get('error')}"
+        f"Pipeline ended with status={discovery_status['status']!r}: "
+        f"{discovery_status.get('error')}"
     )
 
     jobs = db_session.query(Job).all()
@@ -114,7 +119,9 @@ def test_live_full_pipeline(db_session):
     for job in jobs:
         assert job.title is not None and job.title != "", f"job {job.id}: null/empty title"
         assert job.description is not None, f"job {job.id}: null description"
-        assert job.application_url is not None and job.application_url != "", f"job {job.id}: null application_url"
+        assert job.application_url is not None and job.application_url != "", (
+            f"job {job.id}: null application_url"
+        )
         assert job.source is not None, f"job {job.id}: null source"
         assert job.discovered_date is not None, f"job {job.id}: null discovered_date"
 

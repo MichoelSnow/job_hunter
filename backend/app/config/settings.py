@@ -9,8 +9,8 @@ class Settings(BaseSettings):
     database_url: str = "sqlite:///./data/jobs.db"
 
     # API Keys
-    jsearchapi_key: str = ""   # OpenWebNinja JSearch — https://www.openwebninja.com/api/jsearch/docs
-    serplyapi_key: str = ""    # Serply.io job search
+    jsearchapi_key: str = ""  # OpenWebNinja JSearch — https://www.openwebninja.com/api/jsearch/docs
+    serplyapi_key: str = ""  # Serply.io job search
 
     # Application
     debug: bool = False

@@ -13,7 +13,11 @@ Use this file as concise handoff context for multi-step work. Update it when a w
 
 ## Open work
 
-- After the current location normalization/filtering and CI changes are merged, clean up the existing Ruff violations and remove or narrow the temporary `E501`, `I001`, and `UP043` exclusions. Restore stricter lint enforcement in CI when that cleanup is complete.
+- None from the current documentation and lint-cleanup objective.
+
+## Completed recently
+
+- Removed the temporary Ruff `E501`, `I001`, and `UP043` exclusions, formatted the backend, and fixed the reported violations. Strict Ruff, formatting, and the default backend test suite pass.
 
 ## Resume prompt
 

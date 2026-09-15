@@ -1,4 +1,5 @@
 """Bidirectional match scoring between user profile and job listings."""
+
 import logging
 import re
 from typing import Any
@@ -33,8 +34,9 @@ _LEVEL_MAP: dict[str, int] = {
 def _title_level(title: str) -> int | None:
     """Return a numeric seniority level for a title string, or None if unrecognised."""
     title_lower = title.lower()
-    # Sort by level descending so higher-seniority keywords win ties (e.g. "vp" beats "engineer"
-    # in "VP of Engineering"). Use word-boundary matching to avoid "engineer" matching "engineering".
+    # Sort by level descending so higher-seniority keywords win ties (e.g. "vp" beats
+    # "engineer" in "VP of Engineering"). Use word-boundary matching to avoid
+    # "engineer" matching "engineering".
     for keyword in sorted(_LEVEL_MAP, key=lambda k: (_LEVEL_MAP[k], len(k)), reverse=True):
         if re.search(rf"\b{re.escape(keyword)}\b", title_lower):
             return _LEVEL_MAP[keyword]
@@ -161,7 +163,5 @@ class ScoringEngine:
         flat: list[str] = []
         for value in skills.values():
             if isinstance(value, list):
-                flat.extend(
-                    s.get("name", s) if isinstance(s, dict) else s for s in value
-                )
+                flat.extend(s.get("name", s) if isinstance(s, dict) else s for s in value)
         return flat

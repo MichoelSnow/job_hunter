@@ -1,14 +1,15 @@
 """Integration tests: one happy path + one error path per API resource."""
+
 from datetime import date
 from pathlib import Path
 
 from app.models.company import Company
 from app.models.job import Job, JobLocation, JobRequirement
 
-
 # ---------------------------------------------------------------------------
 # Jobs
 # ---------------------------------------------------------------------------
+
 
 class TestJobsAPI:
     @staticmethod
@@ -59,10 +60,24 @@ class TestJobsAPI:
         )
         db_session.add_all([brooklyn, california])
         db_session.flush()
-        db_session.add_all([
-            JobLocation(job_id=brooklyn.id, city="Brooklyn", state="NY", country="United States", display_name="Brooklyn, NY"),
-            JobLocation(job_id=california.id, city="San Francisco", state="CA", country="United States", display_name="San Francisco, CA"),
-        ])
+        db_session.add_all(
+            [
+                JobLocation(
+                    job_id=brooklyn.id,
+                    city="Brooklyn",
+                    state="NY",
+                    country="United States",
+                    display_name="Brooklyn, NY",
+                ),
+                JobLocation(
+                    job_id=california.id,
+                    city="San Francisco",
+                    state="CA",
+                    country="United States",
+                    display_name="San Francisco, CA",
+                ),
+            ]
+        )
         db_session.commit()
 
         nyc = client.get("/api/jobs", params={"location": "New York City"}).json()
@@ -179,7 +194,7 @@ class TestJobsAPI:
             raw_data={
                 "description": (
                     "&lt;p&gt;<strong>Mission</strong>&lt;/p&gt;"
-                    '&lt;a href=&quot;javascript:alert(1)&quot;&gt;bad&lt;/a&gt;'
+                    "&lt;a href=&quot;javascript:alert(1)&quot;&gt;bad&lt;/a&gt;"
                 ),
             },
         )
@@ -204,7 +219,8 @@ class TestJobsAPI:
             raw_data={
                 "description": "<p>Body only</p>",
                 "normalized_description_html": (
-                    "<p><strong>Body</strong></p><h3>What You'll Do:</h3><ul><li>Build strategy</li></ul>"
+                    "<p><strong>Body</strong></p><h3>What You'll Do:</h3>"
+                    "<ul><li>Build strategy</li></ul>"
                 ),
             },
         )
@@ -328,9 +344,15 @@ class TestJobsAPI:
             )
         db_session.commit()
 
-        page1 = client.get("/api/jobs", params={"sort_by": "title", "sort_direction": "asc", "limit": 1, "skip": 0})
-        page2 = client.get("/api/jobs", params={"sort_by": "title", "sort_direction": "asc", "limit": 1, "skip": 1})
-        page3 = client.get("/api/jobs", params={"sort_by": "title", "sort_direction": "asc", "limit": 1, "skip": 2})
+        page1 = client.get(
+            "/api/jobs", params={"sort_by": "title", "sort_direction": "asc", "limit": 1, "skip": 0}
+        )
+        page2 = client.get(
+            "/api/jobs", params={"sort_by": "title", "sort_direction": "asc", "limit": 1, "skip": 1}
+        )
+        page3 = client.get(
+            "/api/jobs", params={"sort_by": "title", "sort_direction": "asc", "limit": 1, "skip": 2}
+        )
 
         assert page1.status_code == 200
         assert page2.status_code == 200
@@ -504,6 +526,7 @@ class TestJobsAPI:
 # Applications
 # ---------------------------------------------------------------------------
 
+
 class TestApplicationsAPI:
     def test_create_application_missing_job_not_found(self, client):
         resp = client.post("/api/applications", json={"job_id": 999, "status": "interested"})
@@ -525,7 +548,9 @@ class TestApplicationsAPI:
 
     def test_get_application(self, client_with_job):
         client, job_id = client_with_job
-        create_resp = client.post("/api/applications", json={"job_id": job_id, "status": "interested"})
+        create_resp = client.post(
+            "/api/applications", json={"job_id": job_id, "status": "interested"}
+        )
         app_id = create_resp.json()["id"]
         resp = client.get(f"/api/applications/{app_id}")
         assert resp.status_code == 200
@@ -536,7 +561,9 @@ class TestApplicationsAPI:
 
     def test_update_application_status(self, client_with_job):
         client, job_id = client_with_job
-        create_resp = client.post("/api/applications", json={"job_id": job_id, "status": "interested"})
+        create_resp = client.post(
+            "/api/applications", json={"job_id": job_id, "status": "interested"}
+        )
         app_id = create_resp.json()["id"]
         resp = client.put(f"/api/applications/{app_id}", json={"status": "applied"})
         assert resp.status_code == 200
@@ -548,7 +575,9 @@ class TestApplicationsAPI:
 
     def test_status_history_recorded_on_update(self, client_with_job):
         client, job_id = client_with_job
-        create_resp = client.post("/api/applications", json={"job_id": job_id, "status": "interested"})
+        create_resp = client.post(
+            "/api/applications", json={"job_id": job_id, "status": "interested"}
+        )
         app_id = create_resp.json()["id"]
         client.put(f"/api/applications/{app_id}", json={"status": "applied"})
         resp = client.get(f"/api/applications/{app_id}/history")
@@ -560,7 +589,9 @@ class TestApplicationsAPI:
 
     def test_delete_application(self, client_with_job):
         client, job_id = client_with_job
-        create_resp = client.post("/api/applications", json={"job_id": job_id, "status": "interested"})
+        create_resp = client.post(
+            "/api/applications", json={"job_id": job_id, "status": "interested"}
+        )
         app_id = create_resp.json()["id"]
         resp = client.delete(f"/api/applications/{app_id}")
         assert resp.status_code == 204
@@ -574,6 +605,7 @@ class TestApplicationsAPI:
 # ---------------------------------------------------------------------------
 # Companies
 # ---------------------------------------------------------------------------
+
 
 class TestCompaniesAPI:
     def test_list_companies_empty_when_no_rows(self, client):
@@ -678,7 +710,9 @@ class TestCompaniesAPI:
         names = [company["name"] for company in post_delete.json()]
         assert "Delete Again" not in names
 
-    def test_list_companies_includes_all_job_sources_independent_of_filters(self, client, db_session):
+    def test_list_companies_includes_all_job_sources_independent_of_filters(
+        self, client, db_session
+    ):
         company = Company(name="Count Co")
         db_session.add(company)
         db_session.flush()
@@ -751,6 +785,7 @@ class TestCompaniesAPI:
 # Analytics
 # ---------------------------------------------------------------------------
 
+
 class TestAnalyticsAPI:
     def test_dashboard_returns_expected_shape(self, client):
         resp = client.get("/api/analytics/dashboard")
@@ -770,6 +805,7 @@ class TestAnalyticsAPI:
 # Discovery Settings
 # ---------------------------------------------------------------------------
 
+
 class TestDiscoverySettingsAPI:
     def test_get_discovery_settings_creates_defaults(self, client):
         resp = client.get("/api/settings/discovery")
@@ -779,7 +815,9 @@ class TestDiscoverySettingsAPI:
         assert isinstance(body["filter_location_query"], str)
         assert isinstance(body["filter_title_query"], str)
         assert isinstance(body["matching_skills"], list)
-        assert body["matching_experience_years"] is None or isinstance(body["matching_experience_years"], int)
+        assert body["matching_experience_years"] is None or isinstance(
+            body["matching_experience_years"], int
+        )
         assert body["filter_exclude_remote"] is True
         assert body["filter_target_salary"] is None
         assert body["filter_include_missing_salary"] is True
@@ -924,7 +962,7 @@ class TestDiscoverySettingsAPI:
     def test_update_discovery_settings_rejects_invalid_boolean_query(self, client):
         payload = {
             "search_queries": ["director data healthcare"],
-            "filter_location_query": '(new york OR',
+            "filter_location_query": "(new york OR",
             "filter_title_query": "director",
             "filter_exclude_remote": True,
             "filter_target_salary": None,
@@ -974,6 +1012,7 @@ class TestDiscoverySettingsAPI:
 # ---------------------------------------------------------------------------
 # User profile
 # ---------------------------------------------------------------------------
+
 
 class TestUserProfileAPI:
     def test_get_profile_returns_expected_shape(self, client):

@@ -25,7 +25,9 @@ class Company(Base):
     careers_page_url: Mapped[str | None] = mapped_column(String(500))
     logo_url: Mapped[str | None] = mapped_column(String(500))
     description: Mapped[str | None] = mapped_column(Text)
-    ats_type: Mapped[str | None] = mapped_column(String(50))  # 'greenhouse', 'lever', 'workday', 'custom'
+    ats_type: Mapped[str | None] = mapped_column(
+        String(50)
+    )  # 'greenhouse', 'lever', 'workday', 'custom'
     ats_id: Mapped[str | None] = mapped_column(String(255))
     workday_board: Mapped[str | None] = mapped_column(String(255))
     workday_instance: Mapped[str | None] = mapped_column(String(50))
@@ -36,8 +38,6 @@ class Company(Base):
     scrape_last_status: Mapped[str | None] = mapped_column(String(20))
     scrape_last_error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=func.now(), onupdate=func.now()
-    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
     jobs: Mapped[list[Job]] = relationship("Job", back_populates="company")

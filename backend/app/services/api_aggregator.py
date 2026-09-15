@@ -1,4 +1,5 @@
 """Job discovery via external job search APIs (JSearch via OpenWebNinja, Serply)."""
+
 import logging
 import time
 from datetime import date, datetime
@@ -343,9 +344,9 @@ def run_company_scrape() -> tuple[list[dict], dict[tuple[str, str], set[str]]]:
       - list of normalized job dicts
       - observed external_ids per (company_name, source) for successful scrapes
     """
-    from app.services.scraper import get_scraper
     from app.db.session import SessionLocal
     from app.models.company import Company
+    from app.services.scraper import get_scraper
 
     enabled, skipped = get_scrape_targets()
     if skipped:
@@ -386,9 +387,7 @@ def run_company_scrape() -> tuple[list[dict], dict[tuple[str, str], set[str]]]:
             if scraper.last_fetch_succeeded:
                 key = (name, _source_for_company(company))
                 observed_external_ids[key] = {
-                    job.get("external_id", "")
-                    for job in jobs
-                    if job.get("external_id")
+                    job.get("external_id", "") for job in jobs if job.get("external_id")
                 }
             for job in jobs:
                 ext_id = job.get("external_id", "")
@@ -399,7 +398,9 @@ def run_company_scrape() -> tuple[list[dict], dict[tuple[str, str], set[str]]]:
     finally:
         db.close()
 
-    logger.info("Company scrape complete: %d unique jobs from %d companies", len(all_jobs), len(enabled))
+    logger.info(
+        "Company scrape complete: %d unique jobs from %d companies", len(all_jobs), len(enabled)
+    )
     return all_jobs, observed_external_ids
 
 
@@ -419,7 +420,9 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
     if not fetch_api and not fetch_scrapers:
         raise ValueError("At least one discovery source must be enabled")
 
-    initial_step = "Fetching from job search APIs..." if fetch_api else "Scraping company job boards..."
+    initial_step = (
+        "Fetching from job search APIs..." if fetch_api else "Scraping company job boards..."
+    )
     _set_status(
         status="running",
         mode=mode,
@@ -485,9 +488,7 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
         )
         filtered_jobs = filter_engine.apply_all(all_jobs)
         filtered_external_ids = {
-            str(job.get("external_id"))
-            for job in filtered_jobs
-            if job.get("external_id")
+            str(job.get("external_id")) for job in filtered_jobs if job.get("external_id")
         }
         for job in all_jobs:
             external_id = job.get("external_id")
@@ -509,7 +510,9 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
 
             sources: dict[str, int] = {}
             for job in all_jobs:
-                sources[job.get("source", "unknown")] = sources.get(job.get("source", "unknown"), 0) + 1
+                sources[job.get("source", "unknown")] = (
+                    sources.get(job.get("source", "unknown"), 0) + 1
+                )
             for source, count in sources.items():
                 record_api_usage(db, api_name=source, request_count=count)
             db.commit()
@@ -590,7 +593,11 @@ def _score_all_active_jobs(db: "Session", engine: "ScoringEngine") -> None:
             if r.requirement_type == "skill" and r.is_required
         ]
         experience_required = next(
-            (int(r.requirement_value) for r in job.requirements if r.requirement_type == "experience"),
+            (
+                int(r.requirement_value)
+                for r in job.requirements
+                if r.requirement_type == "experience"
+            ),
             None,
         )
         job_dict = {

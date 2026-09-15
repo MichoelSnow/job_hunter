@@ -2,11 +2,13 @@ import logging
 import logging.handlers
 from pathlib import Path
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-
+from app.api import analytics, applications, companies, jobs, user
+from app.api import settings as app_settings_api
 from app.config.settings import settings
 from app.db.session import create_tables
+from app.services.text_parser import load_user_profile
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 _log_level = logging.DEBUG if settings.debug else logging.INFO
 _log_format = "%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -48,13 +50,11 @@ def on_startup() -> None:
     logger.info("Starting up — creating tables if needed")
     create_tables()
 
-    from app.services.text_parser import load_user_profile
-
     app.state.user_profile = load_user_profile()
-    logger.info("Loaded user profile for %s", app.state.user_profile.get("user", {}).get("name", "unknown"))
+    logger.info(
+        "Loaded user profile for %s", app.state.user_profile.get("user", {}).get("name", "unknown")
+    )
 
-
-from app.api import analytics, applications, companies, jobs, settings as app_settings_api, user  # noqa: E402
 
 app.include_router(jobs.router, prefix="/api")
 app.include_router(applications.router, prefix="/api")

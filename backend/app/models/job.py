@@ -4,6 +4,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     Date,
     DateTime,
@@ -11,7 +12,6 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    JSON,
     String,
     Text,
     func,
@@ -62,9 +62,7 @@ class Job(Base):
     score_calculated_at: Mapped[datetime | None] = mapped_column(DateTime)
     raw_data: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=func.now(), onupdate=func.now()
-    )
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
 
     company: Mapped[Company | None] = relationship("Company", back_populates="jobs")
     locations: Mapped[list[JobLocation]] = relationship(
@@ -101,9 +99,7 @@ class JobRequirement(Base):
     __tablename__ = "job_requirements"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    job_id: Mapped[int] = mapped_column(
-        ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False
-    )
+    job_id: Mapped[int] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
     # 'skill', 'experience', 'education', 'certification'
     requirement_type: Mapped[str | None] = mapped_column(String(100))
     requirement_value: Mapped[str | None] = mapped_column(String(500))

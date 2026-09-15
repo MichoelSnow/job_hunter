@@ -1,4 +1,5 @@
 """Hard-criteria filtering: removes jobs that don't meet mandatory requirements."""
+
 import logging
 import re
 from dataclasses import dataclass
@@ -222,7 +223,7 @@ def _tokenize_boolean_query(query: str) -> list[_Token]:
     cursor = 0
     for match in pattern.finditer(query):
         if match.start() != cursor:
-            raise ValueError(f"Invalid token near: {query[cursor:match.start()]!r}")
+            raise ValueError(f"Invalid token near: {query[cursor : match.start()]!r}")
         cursor = match.end()
         kind = match.lastgroup
         if kind == "WS":
@@ -302,7 +303,9 @@ class _BooleanQueryParser:
             return None
         return self._tokens[self._index].kind
 
-    def _consume(self, expected_kind: Literal["TERM", "AND", "OR", "NOT", "LPAREN", "RPAREN"]) -> _Token:
+    def _consume(
+        self, expected_kind: Literal["TERM", "AND", "OR", "NOT", "LPAREN", "RPAREN"]
+    ) -> _Token:
         if self._index >= len(self._tokens):
             raise ValueError(f"Expected {expected_kind} but found end of expression")
         token = self._tokens[self._index]
@@ -318,9 +321,13 @@ def _evaluate_ast(ast: _Node, text: str, *, field: Literal["title", "location"])
     if isinstance(ast, _NotNode):
         return not _evaluate_ast(ast.child, text, field=field)
     if isinstance(ast, _AndNode):
-        return _evaluate_ast(ast.left, text, field=field) and _evaluate_ast(ast.right, text, field=field)
+        return _evaluate_ast(ast.left, text, field=field) and _evaluate_ast(
+            ast.right, text, field=field
+        )
     if isinstance(ast, _OrNode):
-        return _evaluate_ast(ast.left, text, field=field) or _evaluate_ast(ast.right, text, field=field)
+        return _evaluate_ast(ast.left, text, field=field) or _evaluate_ast(
+            ast.right, text, field=field
+        )
     return False
 
 

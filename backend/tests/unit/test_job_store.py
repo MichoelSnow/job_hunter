@@ -1,11 +1,8 @@
 from datetime import date
 
-import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
-from app.db.base import Base
 import app.models  # noqa: F401 — register all models
+import pytest
+from app.db.base import Base
 from app.services.job_store import (
     backfill_missing_salaries,
     backfill_missing_work_arrangements,
@@ -16,6 +13,8 @@ from app.services.job_store import (
     upsert_company,
     upsert_job,
 )
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 
 
 @pytest.fixture
@@ -103,14 +102,16 @@ class TestUpsertJob:
     def test_backfills_normalized_locations(self, db):
         from app.models.job import Job
 
-        db.add(Job(
-            title="Director of Data",
-            description="desc",
-            location="New York City, New York",
-            application_url="https://example.com/apply",
-            source="manual",
-            discovered_date=date(2026, 4, 1),
-        ))
+        db.add(
+            Job(
+                title="Director of Data",
+                description="desc",
+                location="New York City, New York",
+                application_url="https://example.com/apply",
+                source="manual",
+                discovered_date=date(2026, 4, 1),
+            )
+        )
         db.commit()
         assert backfill_normalized_locations(db) == 1
         job = db.query(Job).first()
@@ -172,7 +173,9 @@ class TestBulkUpsertJobs:
     def test_creates_company_rows(self, db):
         from app.models.company import Company
 
-        bulk_upsert_jobs(db, [_job(company_name="Health Corp"), _job("js_2", company_name="Data Co")])
+        bulk_upsert_jobs(
+            db, [_job(company_name="Health Corp"), _job("js_2", company_name="Data Co")]
+        )
         count = db.query(Company).count()
         assert count == 2
 
