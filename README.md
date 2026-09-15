@@ -6,7 +6,7 @@ Personal job search aggregation and tracking tool. Discovers data leadership rol
 
 ### Prerequisites
 - Python 3.13 - the supported compatibility range is defined in pyproject.toml
-- pyenv is optional. When available, `.python-version` selects the repository’s expected patch version automatically.
+- pyenv is optional. If used, select any installed Python 3.13 patch release.
 - Poetry (`pip install poetry`)
 - Node.js 20+ and pnpm (`npm install -g pnpm`)
 
@@ -24,11 +24,11 @@ Edit `config/user_profile.yaml` with your name, resume path, and skills.
 
 ### 2. Select Python
 
-If using pyenv, install and select the version recorded in `.python-version`:
+If using pyenv, install and select a Python 3.13 patch release, for example:
 
 ```bash
-pyenv install "$(cat .python-version)"
-pyenv local "$(cat .python-version)"
+pyenv install 3.13.15
+pyenv local 3.13.15
 poetry env use "$(pyenv which python)"
 ```
 

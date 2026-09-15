@@ -64,3 +64,4 @@ cursor_plans.MD
 
 # logs
 logs/
+.python-version
