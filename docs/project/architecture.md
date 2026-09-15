@@ -10,7 +10,12 @@ Single-user, locally-run job search aggregation tool. No authentication, no mult
 
 ```
 job_hunter/
+├── .github/
+│   └── workflows/
+│       └── ci.yml              # Automated backend and frontend checks
 ├── backend/
+│   ├── scripts/                # Maintenance and data migration scripts
+│   │   └── update_historic_locations.py
 │   ├── app/
 │   │   ├── api/                  # FastAPI routers, one file per resource group
 │   │   │   ├── __init__.py
@@ -66,6 +71,8 @@ job_hunter/
 │   │   │   └── SettingsPage.jsx
 │   │   ├── services/
 │   │   │   └── api.js            # Axios client + all API calls
+│   │   ├── utils/                # Shared frontend formatting and utility functions
+│   │   │   └── formatters.js
 │   │   ├── App.jsx
 │   │   └── main.jsx
 │   ├── package.json
@@ -162,7 +169,6 @@ The score reflects only how well the user's matching profile aligns with each jo
 - **ruff** — Python linting and formatting (replaces black + pylint)
 - **pytest + httpx** — backend testing
 - **ESLint + Prettier** — frontend linting and formatting
-- **gitleaks** — secret scanning in CI
 
 ---
 
