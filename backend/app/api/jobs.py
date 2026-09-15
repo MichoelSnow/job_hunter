@@ -214,6 +214,39 @@ def _apply_job_sorting(
     return query.order_by(ordered.nulls_last(), Job.id.desc())
 
 
+def _sort_grouped_jobs(
+    jobs: list[Job],
+    *,
+    sort_by: str | None,
+    sort_direction: Literal["asc", "desc"],
+) -> list[Job]:
+    """Apply the same supported sort fields to the in-memory grouped results."""
+    sort_keys = {
+        "title": lambda job: job.title,
+        "location": lambda job: job.location,
+        "work_arrangement": lambda job: job.work_arrangement,
+        "source": lambda job: job.source,
+        "posted_date": lambda job: job.posted_date,
+        "closed_date": lambda job: job.closed_date,
+        "discovered_date": lambda job: job.discovered_date,
+        "overall_match_score": lambda job: job.overall_match_score,
+        "salary": lambda job: (
+            job.salary_max if job.salary_max is not None else job.salary_min
+        ),
+        "company_name": lambda job: job.company_name.casefold() if job.company_name else None,
+    }
+    key = sort_keys.get(sort_by or "")
+    if key is None:
+        key = sort_keys["overall_match_score"]
+        sort_direction = "desc"
+
+    jobs.sort(key=lambda job: job.id, reverse=True)
+    non_null = [job for job in jobs if key(job) is not None]
+    null = [job for job in jobs if key(job) is None]
+    non_null.sort(key=key, reverse=sort_direction == "desc")
+    return non_null + null
+
+
 @router.get("", response_model=JobListResponse)
 def list_jobs(
     skip: int = Query(0, ge=0),
@@ -279,20 +312,11 @@ def list_jobs(
             if location_group in location_group_keys(job.location_raw or job.location)
         ]
         total = len(group_jobs)
-        reverse = sort_direction == "desc"
-        if sort_by == "company_name":
-            group_jobs.sort(key=lambda job: (job.company_name or "").casefold(), reverse=reverse)
-        elif sort_by == "title":
-            group_jobs.sort(key=lambda job: job.title.casefold(), reverse=reverse)
-        elif sort_by == "location":
-            group_jobs.sort(key=lambda job: (job.location or "").casefold(), reverse=reverse)
-        else:
-            group_jobs.sort(
-                key=lambda job: job.overall_match_score
-                if job.overall_match_score is not None
-                else float("-inf"),
-                reverse=reverse,
-            )
+        group_jobs = _sort_grouped_jobs(
+            group_jobs,
+            sort_by=sort_by,
+            sort_direction=sort_direction,
+        )
         items = group_jobs[skip : skip + limit]
         return JobListResponse(
             total=total,
@@ -441,6 +465,7 @@ def list_job_locations(
     query = db.query(Job.location_raw, Job.location)
     if is_active is not None:
         query = query.filter(Job.is_active == is_active)
+    query = query.filter(Job.passes_user_filters == True)  # noqa: E712
     populated: set[str] = set()
     for raw_location, normalized_location in query.all():
         populated.update(location_group_keys(raw_location or normalized_location))

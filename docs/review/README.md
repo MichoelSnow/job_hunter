@@ -16,6 +16,12 @@ This directory defines an optional, structured review process for proposed chang
 
 The framework audit should be run before the engineering review when both are requested, so basic project alignment is established first. A finding is not automatically a reason to block a change; assess it against project scope, risk, and intentional design decisions.
 
+## Shared proportionality standard
+
+This is a local, single-user, solo-developer project. Every review uses proportionality as a baseline: prefer the simplest safe solution that serves the user's actual workflow, and weigh the concrete utility of added code, process, safeguards, dependencies, or infrastructure against the maintenance and technical-debt cost they introduce. Generic enterprise practices and exhaustive coverage are not requirements unless the project has a demonstrated need.
+
+Auditors may raise questions about alternatives, but should not turn a missing enterprise practice into a finding without a concrete project-specific risk.
+
 ## Required context
 
 Reviews should use:
@@ -55,10 +61,10 @@ Do not treat a deviation from template guidance as a failure unless it conflicts
 ```text
 Run docs/review/02_engineering_review.md.
 Review only changed files and the relevant code paths.
-Use full repository context to assess impact.
+Use full repository context to assess impact. Apply the shared proportionality standard.
 Use AGENTS.md, docs/project/project_rules.md, and the relevant project and reference docs.
 
-Focus on bugs, security risks, data integrity, error handling, performance or cost risks, missing tests, and breaking changes.
+Focus on bugs, security risks, data integrity, error handling, performance or cost risks, missing tests, and breaking changes. Weigh recommendations against their concrete utility and maintenance cost for this solo-developer project.
 Return severity-grouped findings and a concise readiness assessment.
 Prioritize concrete risks over stylistic preferences.
 ```
@@ -68,7 +74,7 @@ Prioritize concrete risks over stylistic preferences.
 ```text
 Run docs/review/03_exploratory_review.md.
 Review only changed files and the relevant code paths.
-Use full repository context to assess architecture and maintainability impact.
+Use full repository context to assess architecture and maintainability impact. Apply the shared proportionality standard.
 Use AGENTS.md, docs/project/project_rules.md, and the relevant project and reference docs.
 
 Provide:
@@ -79,5 +85,5 @@ Provide:
 - thoughtful author questions
 - optional improvements
 
-Keep all feedback non-blocking unless a concrete defect is identified.
+Keep all feedback non-blocking unless a concrete defect is identified. Do not recommend complexity merely for enterprise completeness or template conformity.
 ```

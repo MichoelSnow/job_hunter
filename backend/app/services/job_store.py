@@ -76,7 +76,10 @@ def upsert_job(db: Session, job_dict: dict[str, Any], company_id: int | None) ->
     job_dict = dict(job_dict)
     raw_location = job_dict.get("location_raw") or job_dict.get("location")
     job_dict["location_raw"] = raw_location
-    job_dict["location"] = normalize_location(raw_location)
+    normalized_location = normalize_location(raw_location)
+    if not normalized_location and (job_dict.get("work_arrangement") or "").casefold() == "remote":
+        normalized_location = "Remote"
+    job_dict["location"] = normalized_location
     external_id = job_dict.get("external_id")
 
     existing: Job | None = None

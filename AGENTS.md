@@ -25,6 +25,8 @@ This file is the canonical operating guide for this repository. The project adap
 - If multiple valid interpretations exist, present options or ask before choosing silently.
 - Prefer the minimum code that solves the request; keep changes surgical and directly traceable.
 - Do not refactor unrelated code or add speculative features, abstractions, or configurability.
+- Treat simplicity and low maintenance cost as design goals; do not assume enterprise practices fit this local, solo-developer project.
+- Weigh the concrete utility of non-trivial additions against the technical debt they create.
 - For multi-step tasks, define focused verification checks and run them after implementation.
 - Stop and ask when scope, requirements, or repository behavior materially conflict.
 
