@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any
 import requests
 from tenacity import (
     retry,
-    retry_if_exception_type,
+    retry_if_exception,
     stop_after_attempt,
     wait_exponential,
 )
@@ -59,6 +59,16 @@ def _log_api_retry(retry_state: Any) -> None:
     )
 
 
+def _is_retryable_api_exception(exception: BaseException) -> bool:
+    """Retry only transient transport failures and server-side HTTP errors."""
+    if isinstance(exception, (requests.exceptions.Timeout, requests.exceptions.ConnectionError)):
+        return True
+    if isinstance(exception, requests.exceptions.HTTPError):
+        response = exception.response
+        return response is not None and 500 <= response.status_code < 600
+    return False
+
+
 class JSearchClient:
     """
     JSearch API via OpenWebNinja.
@@ -72,9 +82,7 @@ class JSearchClient:
         self.session.headers.update({"x-api-key": settings.jsearchapi_key})
 
     @retry(
-        retry=retry_if_exception_type(
-            (requests.exceptions.Timeout, requests.exceptions.ConnectionError)
-        ),
+        retry=retry_if_exception(_is_retryable_api_exception),
         stop=stop_after_attempt(2),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         before_sleep=_log_api_retry,
@@ -175,9 +183,7 @@ class SerplyClient:
         self.session.headers.update({"X-Api-Key": settings.serplyapi_key})
 
     @retry(
-        retry=retry_if_exception_type(
-            (requests.exceptions.Timeout, requests.exceptions.ConnectionError)
-        ),
+        retry=retry_if_exception(_is_retryable_api_exception),
         stop=stop_after_attempt(2),
         wait=wait_exponential(multiplier=1, min=2, max=10),
         before_sleep=_log_api_retry,
