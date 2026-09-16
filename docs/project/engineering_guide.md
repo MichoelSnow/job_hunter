@@ -87,6 +87,9 @@ Poetry and pnpm are the dependency-management authorities. Do not add a second l
 
 - Read the relevant official API documentation before changing an integration.
 - Use tenacity for retries on external API calls.
+- Paid API requests use a 60-second timeout and at most one retry for transient
+  timeout or connection failures; HTTP errors are not retried. Provider response
+  and quota diagnostics are logged without credentials or full payloads.
 - Prefer stable public ATS APIs before HTML scraping.
 - Normalize and validate source data before persistence.
 - Keep API keys in `.env` and do not include them in logs, fixtures, or tests.

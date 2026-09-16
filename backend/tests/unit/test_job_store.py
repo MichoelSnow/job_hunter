@@ -153,7 +153,9 @@ class TestUpsertJob:
         assert db.query(Job).count() == 1
 
     def test_prefers_company_api_source_when_url_and_description_match(self, db):
-        first, _ = upsert_job(db, _job(external_id="js_first", source="jsearch_api"), company_id=None)
+        first, _ = upsert_job(
+            db, _job(external_id="js_first", source="jsearch_api"), company_id=None
+        )
         db.commit()
 
         second, created = upsert_job(
