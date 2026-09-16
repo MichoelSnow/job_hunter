@@ -1,9 +1,11 @@
 """Upsert logic for persisting normalized job dicts to the database."""
 
+import hashlib
 import logging
 from datetime import date
 from typing import Any
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.models.company import Company
@@ -40,6 +42,7 @@ _MUTABLE_JOB_FIELDS = (
     "is_active",
     "passes_user_filters",
 )
+_COMPANY_API_SOURCES = {"ashby", "greenhouse", "lever", "workday"}
 
 
 def upsert_company(
@@ -80,13 +83,22 @@ def upsert_job(db: Session, job_dict: dict[str, Any], company_id: int | None) ->
     if not normalized_location and (job_dict.get("work_arrangement") or "").casefold() == "remote":
         normalized_location = "Remote"
     job_dict["location"] = normalized_location
-    external_id = job_dict.get("external_id")
-
-    existing: Job | None = None
-    if external_id:
-        existing = db.query(Job).filter(Job.external_id == external_id).first()
+    existing = _find_existing_job(db, job_dict)
+    if existing is not None and existing.description != job_dict.get("description"):
+        versioned_external_id = _versioned_external_id(job_dict)
+        job_dict["external_id"] = versioned_external_id
+        existing = db.query(Job).filter(Job.external_id == versioned_external_id).first()
 
     if existing is not None:
+        if source_priority(job_dict.get("source")) > source_priority(existing.source):
+            existing.source = job_dict.get("source")
+            incoming_external_id = job_dict.get("external_id")
+            if incoming_external_id:
+                external_id_owner = (
+                    db.query(Job).filter(Job.external_id == incoming_external_id).first()
+                )
+                if external_id_owner is None or external_id_owner.id == existing.id:
+                    existing.external_id = incoming_external_id
         for field in _MUTABLE_JOB_FIELDS:
             value = job_dict.get(field)
             if field == "closed_date":
@@ -121,6 +133,57 @@ def upsert_job(db: Session, job_dict: dict[str, Any], company_id: int | None) ->
     db.flush()
     _replace_job_locations(db, job)
     return job, True
+
+
+def _find_existing_job(db: Session, job_dict: dict[str, Any]) -> Job | None:
+    """Find an exact snapshot match, then fall back to the provider identifier."""
+    application_url = normalize_application_url(job_dict.get("application_url"))
+    description = job_dict.get("description")
+    if application_url and description is not None:
+        existing_candidates = (
+            db.query(Job)
+            .filter(
+                func.lower(func.rtrim(Job.application_url, "/")) == application_url.casefold(),
+                Job.description == description,
+            )
+            .all()
+        )
+        if existing_candidates:
+            return min(
+                existing_candidates,
+                key=lambda job: (-source_priority(job.source), job.discovered_date, job.id),
+            )
+
+    external_id = job_dict.get("external_id")
+    if external_id:
+        return db.query(Job).filter(Job.external_id == external_id).first()
+    return None
+
+
+def normalize_application_url(value: Any) -> str:
+    """Normalize the small set of URL differences that commonly create duplicates."""
+    return str(value or "").strip().rstrip("/")
+
+
+def source_priority(source: Any) -> int:
+    """Prefer known company ATS/API sources over aggregator sources."""
+    return int(str(source or "").casefold() in _COMPANY_API_SOURCES)
+
+
+def _versioned_external_id(job_dict: dict[str, Any]) -> str | None:
+    """Create a stable provider-ID variant for a changed description snapshot."""
+    external_id = job_dict.get("external_id")
+    if not external_id:
+        return None
+    fingerprint = "|".join(
+        (
+            str(external_id),
+            normalize_application_url(job_dict.get("application_url")),
+            str(job_dict.get("description") or ""),
+        )
+    )
+    digest = hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:16]
+    return f"{external_id}:snapshot:{digest}"
 
 
 def _replace_job_locations(db: Session, job: Job) -> None:
