@@ -134,6 +134,62 @@ class TestUpsertJob:
         db.commit()
         assert created is False
 
+    def test_reuses_existing_job_when_url_and_description_match(self, db):
+        first, created = upsert_job(db, _job(external_id="js_first"), company_id=None)
+        db.commit()
+
+        second, second_created = upsert_job(
+            db,
+            _job(external_id="js_second", title="Updated source title"),
+            company_id=None,
+        )
+        db.commit()
+
+        assert created is True
+        assert second_created is False
+        assert second.id == first.id
+        from app.models.job import Job
+
+        assert db.query(Job).count() == 1
+
+    def test_prefers_company_api_source_when_url_and_description_match(self, db):
+        first, _ = upsert_job(db, _job(external_id="js_first", source="jsearch_api"), company_id=None)
+        db.commit()
+
+        second, created = upsert_job(
+            db,
+            _job(external_id="gh_first", source="greenhouse"),
+            company_id=None,
+        )
+        db.commit()
+
+        assert created is False
+        assert second.id == first.id
+        assert second.source == "greenhouse"
+        assert second.external_id == "gh_first"
+
+    def test_keeps_new_row_when_description_changes(self, db):
+        first, _ = upsert_job(db, _job(external_id="js_same"), company_id=None)
+        db.commit()
+
+        second, created = upsert_job(
+            db,
+            _job(
+                external_id="js_same",
+                description="A materially changed job description.",
+                discovered_date="2026-04-15",
+            ),
+            company_id=None,
+        )
+        db.commit()
+
+        assert created is True
+        assert second.id != first.id
+        assert second.external_id != first.external_id
+        from app.models.job import Job
+
+        assert db.query(Job).count() == 2
+
     def test_updated_job_reflects_new_title(self, db):
         from app.models.job import Job
 
@@ -145,9 +201,17 @@ class TestUpsertJob:
         assert job.title == "VP of Data"
 
     def test_no_external_id_always_inserts(self, db):
-        _, created1 = upsert_job(db, _job(external_id=None), company_id=None)
+        _, created1 = upsert_job(
+            db,
+            _job(external_id=None, application_url="https://example.com/apply-one"),
+            company_id=None,
+        )
         db.commit()
-        _, created2 = upsert_job(db, _job(external_id=None), company_id=None)
+        _, created2 = upsert_job(
+            db,
+            _job(external_id=None, application_url="https://example.com/apply-two"),
+            company_id=None,
+        )
         db.commit()
         assert created1 is True
         assert created2 is True
@@ -167,7 +231,18 @@ class TestUpsertJob:
 
 class TestBulkUpsertJobs:
     def test_inserts_multiple_jobs(self, db):
-        jobs = [_job("js_1", "Director of Data"), _job("js_2", "VP of Analytics")]
+        jobs = [
+            _job(
+                "js_1",
+                "Director of Data",
+                application_url="https://example.com/apply-one",
+            ),
+            _job(
+                "js_2",
+                "VP of Analytics",
+                application_url="https://example.com/apply-two",
+            ),
+        ]
         inserted, updated = bulk_upsert_jobs(db, jobs)
         assert inserted == 2
         assert updated == 0
@@ -274,7 +349,12 @@ class TestMarkMissingScrapedJobsClosed:
             db,
             [
                 _job(external_id="lv_a", source="lever", company_name="Acme"),
-                _job(external_id="lv_b", source="lever", company_name="Acme"),
+                _job(
+                    external_id="lv_b",
+                    source="lever",
+                    company_name="Acme",
+                    application_url="https://example.com/lever-b",
+                ),
             ],
         )
         closed = mark_missing_scraped_jobs_closed(
@@ -297,8 +377,18 @@ class TestMarkMissingScrapedJobsClosed:
         bulk_upsert_jobs(
             db,
             [
-                _job(external_id="gh_a", source="greenhouse", company_name="Beta"),
-                _job(external_id="gh_b", source="greenhouse", company_name="Beta"),
+                _job(
+                    external_id="gh_a",
+                    source="greenhouse",
+                    company_name="Beta",
+                    application_url="https://example.com/greenhouse-a",
+                ),
+                _job(
+                    external_id="gh_b",
+                    source="greenhouse",
+                    company_name="Beta",
+                    application_url="https://example.com/greenhouse-b",
+                ),
             ],
         )
         closed = mark_missing_scraped_jobs_closed(

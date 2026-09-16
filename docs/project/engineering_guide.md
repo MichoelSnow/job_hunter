@@ -28,6 +28,7 @@ This is the project-specific reference for coding standards, testing, tooling, a
 - Return user-safe error messages from the API and UI.
 - Log enough context to diagnose scraper, API, parsing, and database failures without logging secrets or sensitive resume content.
 - Do not silently treat a failed external source as a successful empty result.
+- Write verbose operational output, reports, and long-running task logs to files under `logs/` rather than stdout. Keep stdout limited to concise status or errors unless a command explicitly documents another output format.
 
 ## Backend testing
 
@@ -123,6 +124,22 @@ poetry run python -m scripts.update_historic_locations
 ```
 
 The dry run is optional but recommended before committing the update. The operation is rerunnable and only updates rows whose normalized value or preserved raw value changes.
+
+To report existing duplicate job snapshots without changing the database:
+
+```bash
+poetry run python -m scripts.cleanup_duplicate_jobs
+```
+
+The script writes its output to `logs/cleanup_duplicate_jobs.log` rather than stdout.
+
+The cleanup matches snapshots by normalized application URL plus normalized description, or by company, title, and normalized description across sources. Description normalization collapses whitespace, normalizes common bullet characters, and performs a second-pass similarity check for descriptions that are at least 99% similar. It prefers a company ATS/API source (`ashby`, `greenhouse`, `lever`, or `workday`) over an aggregator such as JSearch, then keeps the earliest discovered row. It preserves descriptions below that similarity threshold and skips groups linked to applications. After reviewing the dry-run output, pass `--apply` to remove later duplicates:
+
+```bash
+poetry run python -m scripts.cleanup_duplicate_jobs --apply
+```
+
+`--apply` is the only mode that deletes rows and must be run explicitly.
 
 ## Continuous integration
 

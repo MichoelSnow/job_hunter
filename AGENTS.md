@@ -85,6 +85,7 @@ When instructions overlap, use this order:
 
 - Use a 10-second timeout by default.
 - Do not hardcode secrets in commands. Load local secrets from `.env` only when necessary.
+- Do not send verbose or potentially large command output to stdout by default. Write detailed logs and reports to an appropriate file under `logs/` and tell the user where to find them. Use stdout only for concise status, errors, or output the user explicitly requested there.
 - Do not use destructive commands or overwrite unrelated user changes.
 
 ## Documentation to read

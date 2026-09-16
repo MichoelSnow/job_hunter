@@ -109,6 +109,8 @@ This tool runs locally for one person. There is no `users` table and no authenti
 ### Persistent Database Across Search Sessions
 The SQLite database accumulates data across all job search sessions — whether the user runs it weekly, returns after 3 months, or picks it up again a year later. Jobs are never purged; they remain with their `discovered_date` timestamp. The UI defaults to showing jobs from the last 60 days, with a date filter to expand the view. Applications and history are always preserved.
 
+Repeated discovery of the same posting reuses the earliest matching row when its normalized application URL and exact description are unchanged. When duplicate source records are available, a company ATS/API source is preferred over an aggregator such as JSearch. If the description changes, discovery creates a new row so the job-description history and the first-discovered date for each version are preserved.
+
 This means no concept of "search sessions" at the schema level — `discovered_date` on each job row is sufficient to scope any time window.
 
 ### Location Normalization
