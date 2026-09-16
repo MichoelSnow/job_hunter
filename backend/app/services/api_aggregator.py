@@ -6,7 +6,12 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, Any
 
 import requests
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import (
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from app.config.settings import settings
 from app.services.job_normalization import (
@@ -33,12 +38,36 @@ discovery_status: dict[str, Any] = {
     "inserted": None,
     "updated": None,
     "filtered_out": None,
+    "warnings": [],
     "error": None,
 }
 
 
 def _set_status(**kwargs: Any) -> None:
     discovery_status.update(kwargs)
+
+
+def _log_api_retry(retry_state: Any) -> None:
+    """Log retry diagnostics without including credentials or response bodies."""
+    exception = retry_state.outcome.exception() if retry_state.outcome else None
+    next_sleep = retry_state.next_action.sleep if retry_state.next_action else 0
+    logger.warning(
+        "Retrying %s after %s (attempt=%d, next_wait=%.1fs)",
+        retry_state.fn.__qualname__,
+        type(exception).__name__ if exception else "unknown error",
+        retry_state.attempt_number,
+        next_sleep,
+    )
+
+
+def _is_retryable_api_exception(exception: BaseException) -> bool:
+    """Retry only transient transport failures and server-side HTTP errors."""
+    if isinstance(exception, (requests.exceptions.Timeout, requests.exceptions.ConnectionError)):
+        return True
+    if isinstance(exception, requests.exceptions.HTTPError):
+        response = exception.response
+        return response is not None and 500 <= response.status_code < 600
+    return False
 
 
 class JSearchClient:
@@ -52,8 +81,15 @@ class JSearchClient:
     def __init__(self) -> None:
         self.session = requests.Session()
         self.session.headers.update({"x-api-key": settings.jsearchapi_key})
+        self.request_count = 0
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    @retry(
+        retry=retry_if_exception(_is_retryable_api_exception),
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        before_sleep=_log_api_retry,
+        reraise=True,
+    )
     def search(self, query: str, location: str) -> list[dict[str, Any]]:
         # num_pages bundles multiple result pages into one HTTP response (each page = 10 jobs).
         # Values 1–10 cost 2× quota; 11–20 cost 3× quota. Default of 10 → 100 results at 2× cost.
@@ -63,9 +99,35 @@ class JSearchClient:
             "num_pages": settings.jsearch_num_pages,
         }
         try:
-            response = self.session.get(self.URL, params=params, timeout=30)
+            started_at = time.monotonic()
+            self.request_count += 1
+            response = self.session.get(
+                self.URL,
+                params=params,
+                timeout=settings.api_request_timeout_seconds,
+            )
             response.raise_for_status()
             data = response.json()
+            elapsed = time.monotonic() - started_at
+            quota_headers = {
+                name: response.headers.get(name)
+                for name in (
+                    "x-ratelimit-limit",
+                    "x-ratelimit-remaining",
+                    "x-ratelimit-reset",
+                )
+                if response.headers.get(name) is not None
+            }
+            logger.info(
+                "JSearch response received: http_status=%s provider_status=%r "
+                "request_id=%r result_count=%d elapsed=%.2fs quota=%s",
+                response.status_code,
+                data.get("status"),
+                data.get("request_id"),
+                len(data.get("data", [])),
+                elapsed,
+                quota_headers,
+            )
             time.sleep(settings.api_request_delay_seconds)
             return data.get("data", [])
         except requests.exceptions.HTTPError as exc:
@@ -122,16 +184,36 @@ class SerplyClient:
     def __init__(self) -> None:
         self.session = requests.Session()
         self.session.headers.update({"X-Api-Key": settings.serplyapi_key})
+        self.request_count = 0
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=2, max=10))
+    @retry(
+        retry=retry_if_exception(_is_retryable_api_exception),
+        stop=stop_after_attempt(2),
+        wait=wait_exponential(multiplier=1, min=2, max=10),
+        before_sleep=_log_api_retry,
+        reraise=True,
+    )
     def search(self, query: str, location: str) -> list[dict[str, Any]]:
         # num / per_page: Serply supports up to 100 results per request.
         search_text = f"{query} {location}".strip()
         params = {"q": search_text, "num": str(settings.serply_num_results)}
         try:
-            response = self.session.get(self.URL, params=params, timeout=30)
+            started_at = time.monotonic()
+            self.request_count += 1
+            response = self.session.get(
+                self.URL,
+                params=params,
+                timeout=settings.api_request_timeout_seconds,
+            )
             response.raise_for_status()
             data = response.json()
+            elapsed = time.monotonic() - started_at
+            logger.info(
+                "Serply response received: http_status=%s result_count=%d elapsed=%.2fs",
+                response.status_code,
+                len(data.get("jobs", [])),
+                elapsed,
+            )
             time.sleep(settings.api_request_delay_seconds)
             return data.get("jobs", [])
         except requests.exceptions.HTTPError as exc:
@@ -181,6 +263,8 @@ class JobAPIAggregator:
 
     def __init__(self) -> None:
         self.clients: list[tuple[Any, str]] = []
+        self.request_counts: dict[str, int] = {}
+        self.failures: list[dict[str, str]] = []
         if settings.jsearchapi_key:
             self.clients.append((JSearchClient(), "JSearch"))
         if settings.serplyapi_key:
@@ -202,6 +286,7 @@ class JobAPIAggregator:
         for client, name in self.clients:
             for query in search_queries:
                 for location in locations:
+                    requests_before = getattr(client, "request_count", 0)
                     try:
                         raw_jobs = client.search(query=query, location=location)
                         for raw in raw_jobs:
@@ -210,9 +295,25 @@ class JobAPIAggregator:
                             if ext_id and ext_id not in seen_ids:
                                 seen_ids.add(ext_id)
                                 all_results.append(normalized)
-                    except Exception:
+                    except Exception as exc:
+                        self.failures.append(
+                            {
+                                "provider": name,
+                                "query": query,
+                                "location": location,
+                                "error": type(exc).__name__,
+                            }
+                        )
                         logger.exception(
                             "%s search failed for query=%r location=%r", name, query, location
+                        )
+                    finally:
+                        request_delta = getattr(client, "request_count", 0) - requests_before
+                        api_name = {"JSearch": "jsearch_api", "Serply": "serply_api"}.get(
+                            name, name
+                        )
+                        self.request_counts[api_name] = (
+                            self.request_counts.get(api_name, 0) + request_delta
                         )
 
         logger.info("API aggregator fetched %d unique jobs", len(all_results))
@@ -432,6 +533,7 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
         inserted=None,
         updated=None,
         filtered_out=None,
+        warnings=[],
         error=None,
     )
     logger.info("Starting job discovery run (mode=%s)", mode)
@@ -454,14 +556,14 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
         finally:
             settings_db.close()
 
+        api_aggregator = JobAPIAggregator() if fetch_api else None
         api_jobs = (
-            JobAPIAggregator().search_all(
-                search_queries=search_queries,
-                search_locations=[],
-            )
-            if fetch_api
+            api_aggregator.search_all(search_queries=search_queries, search_locations=[])
+            if api_aggregator
             else []
         )
+        api_warnings = api_aggregator.failures if api_aggregator else []
+        api_request_counts = api_aggregator.request_counts if api_aggregator else {}
 
         scraped_jobs: list[dict] = []
         observed_scraped_ids: dict[tuple[str, str], set[str]] = {}
@@ -508,12 +610,7 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
                     closed_on=date.today(),
                 )
 
-            sources: dict[str, int] = {}
-            for job in all_jobs:
-                sources[job.get("source", "unknown")] = (
-                    sources.get(job.get("source", "unknown"), 0) + 1
-                )
-            for source, count in sources.items():
+            for source, count in api_request_counts.items():
                 record_api_usage(db, api_name=source, request_count=count)
             db.commit()
 
@@ -538,6 +635,7 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
             inserted=inserted,
             updated=updated,
             filtered_out=filtered_out,
+            warnings=api_warnings,
         )
         logger.info(
             "Discovery run complete (mode=%s): %d inserted, %d updated, %d filtered out",

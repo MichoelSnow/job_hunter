@@ -1,6 +1,6 @@
 from typing import Any
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,6 +18,7 @@ class Settings(BaseSettings):
 
     # Job Discovery
     api_request_delay_seconds: int = 1
+    api_request_timeout_seconds: int = Field(default=60, ge=1, le=60)
 
     # JSearch: num_pages per request (1–10 costs 2x quota; 11–20 costs 3x quota).
     # 10 = 100 results per HTTP call at 2x quota cost — best efficiency on free plan.

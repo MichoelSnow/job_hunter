@@ -228,6 +228,16 @@ class TestDiscoveryPipeline:
         self._run_discovery(db_session)
         assert db_session.query(Job).count() > 0
 
+    def test_api_usage_counts_http_attempts(self, db_session):
+        from app.models.tracking import ApiUsageTracking
+
+        self._run_discovery(db_session)
+
+        usage = {
+            row.api_name: row.request_count for row in db_session.query(ApiUsageTracking).all()
+        }
+        assert usage == {"jsearch_api": 1, "serply_api": 1}
+
     def test_second_run_updates_not_inserts(self, db_session):
         from app.services.api_aggregator import discovery_status
 
