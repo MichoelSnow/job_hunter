@@ -447,6 +447,13 @@ export default function JobsPage() {
             {refreshStatusData.filtered_out} filtered out.
           </div>
         )}
+        {refreshStatusData?.status === "complete" && refreshStatusData?.warnings?.length > 0 && (
+          <div className="mb-3 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+            Discovery completed with {refreshStatusData.warnings.length} provider failure
+            {refreshStatusData.warnings.length === 1 ? "" : "s"}. Successful results were saved;
+            check the backend logs for details.
+          </div>
+        )}
         {refreshStatusData?.status === "error" && (
           <div className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
             Discovery failed: {refreshStatusData.error ?? "unknown error"}

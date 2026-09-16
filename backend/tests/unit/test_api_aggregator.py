@@ -77,6 +77,34 @@ class TestJSearchClient:
         assert jobs == [{"job_id": "job-1"}]
         assert get.call_count == 2
 
+    def test_search_all_reports_failed_queries_and_actual_attempts(self):
+        from app.services import api_aggregator
+
+        with (
+            patch.object(api_aggregator.settings, "jsearchapi_key", "test-key"),
+            patch.object(api_aggregator.settings, "serplyapi_key", ""),
+            patch.object(api_aggregator.settings, "jsearch_num_pages", 10),
+            patch.object(api_aggregator.settings, "api_request_timeout_seconds", 60),
+            patch("requests.Session.get", side_effect=requests.ReadTimeout()),
+            patch("app.services.api_aggregator.time.sleep"),
+        ):
+            aggregator = api_aggregator.JobAPIAggregator()
+            jobs = aggregator.search_all(
+                search_queries=["data"],
+                search_locations=["New York"],
+            )
+
+        assert jobs == []
+        assert aggregator.request_counts == {"jsearch_api": 2}
+        assert aggregator.failures == [
+            {
+                "provider": "JSearch",
+                "query": "data",
+                "location": "New York",
+                "error": "ReadTimeout",
+            }
+        ]
+
 
 def test_api_request_timeout_cannot_exceed_one_minute():
     from app.config.settings import Settings

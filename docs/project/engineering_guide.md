@@ -91,6 +91,9 @@ Poetry and pnpm are the dependency-management authorities. Do not add a second l
   transient timeout, connection, or server-side HTTP failures; client and rate-
   limit errors are not retried. Provider response and quota diagnostics are
   logged without credentials or full payloads.
+- API usage totals count actual paid-provider HTTP attempts, including retries;
+  discovery status exposes provider query failures as warnings while preserving
+  successful results.
 - Prefer stable public ATS APIs before HTML scraping.
 - Normalize and validate source data before persistence.
 - Keep API keys in `.env` and do not include them in logs, fixtures, or tests.

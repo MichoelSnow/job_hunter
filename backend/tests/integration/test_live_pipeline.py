@@ -96,6 +96,7 @@ def test_live_full_pipeline(db_session):
         mock_settings.jsearchapi_key = real_jsearch_key
         mock_settings.serplyapi_key = ""  # disabled — no Serply calls
         mock_settings.jsearch_num_pages = 1
+        mock_settings.api_request_timeout_seconds = 60
         mock_settings.serply_num_results = 10
         mock_settings.search_queries = ["director data healthcare"]
         mock_settings.search_locations = ["New York, NY"]

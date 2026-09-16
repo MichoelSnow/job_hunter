@@ -38,6 +38,7 @@ discovery_status: dict[str, Any] = {
     "inserted": None,
     "updated": None,
     "filtered_out": None,
+    "warnings": [],
     "error": None,
 }
 
@@ -80,6 +81,7 @@ class JSearchClient:
     def __init__(self) -> None:
         self.session = requests.Session()
         self.session.headers.update({"x-api-key": settings.jsearchapi_key})
+        self.request_count = 0
 
     @retry(
         retry=retry_if_exception(_is_retryable_api_exception),
@@ -98,6 +100,7 @@ class JSearchClient:
         }
         try:
             started_at = time.monotonic()
+            self.request_count += 1
             response = self.session.get(
                 self.URL,
                 params=params,
@@ -181,6 +184,7 @@ class SerplyClient:
     def __init__(self) -> None:
         self.session = requests.Session()
         self.session.headers.update({"X-Api-Key": settings.serplyapi_key})
+        self.request_count = 0
 
     @retry(
         retry=retry_if_exception(_is_retryable_api_exception),
@@ -195,6 +199,7 @@ class SerplyClient:
         params = {"q": search_text, "num": str(settings.serply_num_results)}
         try:
             started_at = time.monotonic()
+            self.request_count += 1
             response = self.session.get(
                 self.URL,
                 params=params,
@@ -258,6 +263,8 @@ class JobAPIAggregator:
 
     def __init__(self) -> None:
         self.clients: list[tuple[Any, str]] = []
+        self.request_counts: dict[str, int] = {}
+        self.failures: list[dict[str, str]] = []
         if settings.jsearchapi_key:
             self.clients.append((JSearchClient(), "JSearch"))
         if settings.serplyapi_key:
@@ -279,6 +286,7 @@ class JobAPIAggregator:
         for client, name in self.clients:
             for query in search_queries:
                 for location in locations:
+                    requests_before = getattr(client, "request_count", 0)
                     try:
                         raw_jobs = client.search(query=query, location=location)
                         for raw in raw_jobs:
@@ -287,9 +295,25 @@ class JobAPIAggregator:
                             if ext_id and ext_id not in seen_ids:
                                 seen_ids.add(ext_id)
                                 all_results.append(normalized)
-                    except Exception:
+                    except Exception as exc:
+                        self.failures.append(
+                            {
+                                "provider": name,
+                                "query": query,
+                                "location": location,
+                                "error": type(exc).__name__,
+                            }
+                        )
                         logger.exception(
                             "%s search failed for query=%r location=%r", name, query, location
+                        )
+                    finally:
+                        request_delta = getattr(client, "request_count", 0) - requests_before
+                        api_name = {"JSearch": "jsearch_api", "Serply": "serply_api"}.get(
+                            name, name
+                        )
+                        self.request_counts[api_name] = (
+                            self.request_counts.get(api_name, 0) + request_delta
                         )
 
         logger.info("API aggregator fetched %d unique jobs", len(all_results))
@@ -509,6 +533,7 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
         inserted=None,
         updated=None,
         filtered_out=None,
+        warnings=[],
         error=None,
     )
     logger.info("Starting job discovery run (mode=%s)", mode)
@@ -531,14 +556,14 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
         finally:
             settings_db.close()
 
+        api_aggregator = JobAPIAggregator() if fetch_api else None
         api_jobs = (
-            JobAPIAggregator().search_all(
-                search_queries=search_queries,
-                search_locations=[],
-            )
-            if fetch_api
+            api_aggregator.search_all(search_queries=search_queries, search_locations=[])
+            if api_aggregator
             else []
         )
+        api_warnings = api_aggregator.failures if api_aggregator else []
+        api_request_counts = api_aggregator.request_counts if api_aggregator else {}
 
         scraped_jobs: list[dict] = []
         observed_scraped_ids: dict[tuple[str, str], set[str]] = {}
@@ -585,12 +610,7 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
                     closed_on=date.today(),
                 )
 
-            sources: dict[str, int] = {}
-            for job in all_jobs:
-                sources[job.get("source", "unknown")] = (
-                    sources.get(job.get("source", "unknown"), 0) + 1
-                )
-            for source, count in sources.items():
+            for source, count in api_request_counts.items():
                 record_api_usage(db, api_name=source, request_count=count)
             db.commit()
 
@@ -615,6 +635,7 @@ def _run_job_discovery(*, fetch_api: bool, fetch_scrapers: bool, mode: str) -> N
             inserted=inserted,
             updated=updated,
             filtered_out=filtered_out,
+            warnings=api_warnings,
         )
         logger.info(
             "Discovery run complete (mode=%s): %d inserted, %d updated, %d filtered out",
