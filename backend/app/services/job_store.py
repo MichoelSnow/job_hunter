@@ -83,8 +83,6 @@ def upsert_job(db: Session, job_dict: dict[str, Any], company_id: int | None) ->
     if not normalized_location and (job_dict.get("work_arrangement") or "").casefold() == "remote":
         normalized_location = "Remote"
     job_dict["location"] = normalized_location
-    external_id = job_dict.get("external_id")
-
     existing = _find_existing_job(db, job_dict)
     if existing is not None and existing.description != job_dict.get("description"):
         versioned_external_id = _versioned_external_id(job_dict)

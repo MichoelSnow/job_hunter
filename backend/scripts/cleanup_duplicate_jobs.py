@@ -103,7 +103,7 @@ def _descriptions_may_match(first: str, second: str) -> bool:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Report or remove exact duplicate job snapshots while preserving history."
+        description="Report or remove duplicate job snapshots while preserving history."
     )
     parser.add_argument(
         "--apply",
@@ -134,7 +134,7 @@ def main() -> int:
             removable_rows += len(duplicate_rows)
             action = "Removing" if args.apply else "Would remove"
             logger.info(
-                "%s jobs %s; keeping earliest job %s discovered %s",
+                "%s jobs %s; keeping preferred job %s discovered %s",
                 action,
                 ", ".join(str(job.id) for job in duplicate_rows),
                 survivor.id,

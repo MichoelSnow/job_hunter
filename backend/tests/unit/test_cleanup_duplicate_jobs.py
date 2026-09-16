@@ -50,6 +50,7 @@ def test_groups_cross_source_jobs_with_different_urls_when_content_matches():
             date(2026, 8, 23),
             "https://jobs.ashbyhq.com/arlo/456",
             "The same job description.",
+            source="ashby",
         ),
     ]
 
